@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/dashboard/ProgressBar";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { BrazilMap } from "@/components/dashboard/BrazilMap";
 import { WorldDriftLog } from "@/components/dashboard/WorldDriftLog";
+import { WorldEventsWidget } from "@/components/dashboard/WorldEventsWidget";
 
 function approvalColor(value: number) {
   if (value >= 50) return "#10b981";
@@ -159,6 +160,8 @@ export default function DashboardPage() {
           </p>
           <WorldDriftLog entries={gameState.worldDriftLog} />
         </Panel>
+
+        <WorldEventsWidget events={gameState.worldEvents} />
       </div>
     </div>
   );

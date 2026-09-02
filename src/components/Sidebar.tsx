@@ -11,7 +11,9 @@ import {
   Globe,
   TrendingUp,
   Newspaper,
+  AlertTriangle,
   Settings,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -31,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/diplomacy", label: "Diplomacy", icon: Globe },
   { href: "/economy", label: "Economy", icon: TrendingUp },
   { href: "/media", label: "Media", icon: Newspaper },
+  { href: "/events", label: "Events", icon: AlertTriangle },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -43,6 +46,9 @@ function approvalColor(approval: number) {
 export function Sidebar() {
   const pathname = usePathname();
   const { gameState } = useGame();
+  const urgentEventCount = gameState.worldEvents.filter(
+    (e) => e.requiresResponse && e.status === "active"
+  ).length;
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border bg-panel">
@@ -90,15 +96,37 @@ export function Sidebar() {
                   : "border-transparent text-text-muted hover:bg-panel-2/60 hover:text-text"
               }`}
             >
-              <Icon
-                size={16}
-                className={isActive ? "text-accent" : "text-text-muted"}
-              />
+              <span className="relative flex items-center">
+                <Icon
+                  size={16}
+                  className={isActive ? "text-accent" : "text-text-muted"}
+                />
+                {item.href === "/events" && urgentEventCount > 0 && (
+                  <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />
+                )}
+              </span>
               {item.label}
+              {item.href === "/events" && urgentEventCount > 0 && (
+                <span className="ml-auto rounded-full bg-danger/20 px-1.5 py-0.5 text-[10px] font-semibold text-danger">
+                  {urgentEventCount}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
+
+      <div className="border-t border-border px-2 py-2">
+        <a
+          href="/wiki"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-text-muted transition-colors hover:bg-panel-2/60 hover:text-text"
+        >
+          <BookOpen size={16} className="text-text-muted" />
+          Wiki
+        </a>
+      </div>
 
       <div className="border-t border-border px-5 py-4">
         <p className="text-[11px] uppercase tracking-widest text-text-muted">

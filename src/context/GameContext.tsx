@@ -56,8 +56,11 @@ import {
 import type {
   NewOperationSpec,
   NewProjectSpec,
+  NovelWorldEventResult,
   OrganisationEffect,
+  WorldEventDetailResult,
 } from "@/lib/gemini";
+import { planTurnEvents, type RandomEventSeed } from "@/lib/eventGenerator";
 
 export interface TurnResult {
   narrative: string;
@@ -98,6 +101,10 @@ interface GameContextValue {
   /** Crisis alerts from checkFailureThresholds, queued one at a time. */
   activeFailureAlerts: FailureThreshold[];
   dismissFailureAlert: () => void;
+  /** Applies a world event's chosen response and returns the consequence narrative. */
+  respondToWorldEvent: (eventId: string, optionId: string) => Promise<string>;
+  respondingWorldEventId: string | null;
+  worldEventResponseError: string | null;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -163,6 +170,105 @@ function applyNewProject(
   return [...projects, newProject];
 }
 
+function buildWorldEventFromSeed(
+  seed: RandomEventSeed,
+  detail: WorldEventDetailResult | undefined,
+  turn: number,
+  index: number
+): WorldEvent {
+  return {
+    id: `wevent_${turn}_seed_${index}_${slugify(seed.title)}`,
+    type: seed.type,
+    category: seed.category,
+    title: seed.title,
+    location: detail?.location || "Brazil",
+    description: detail?.description || "",
+    context: detail?.context || "",
+    startTurn: turn,
+    expiresOnTurn: turn + (seed.severity === "informational" ? 1 : 2),
+    severity: seed.severity,
+    requiresResponse: false,
+    responseOptions: [],
+    brazilImpact: detail?.brazilImpact
+      ? {
+          description: detail.brazilImpact.description,
+          severity: detail.brazilImpact.severity as BrazilImpact["severity"],
+          affectedAreas: detail.brazilImpact.affectedAreas,
+          suggestedResponse: detail.brazilImpact.suggestedResponse,
+        }
+      : null,
+    status: "ongoing",
+    playerResponse: null,
+    resolvedOnTurn: null,
+  };
+}
+
+function buildWorldEventFromNovel(n: NovelWorldEventResult, turn: number): WorldEvent {
+  const responseOptions: EventResponseOption[] = n.responseOptions.map((o) => ({
+    id: slugify(o.label),
+    label: o.label,
+    description: o.description,
+    effects: o.effects as Partial<Record<keyof GameState, number>>,
+    requiresActionPoints: o.requiresActionPoints,
+    consequenceNarrative: o.consequenceNarrative,
+  }));
+
+  return {
+    id: `wevent_${turn}_novel_${slugify(n.title)}`,
+    type: n.type,
+    category: n.category as DomesticCategory | InternationalCategory,
+    title: n.title,
+    location: n.location,
+    description: n.description,
+    context: n.context,
+    startTurn: turn,
+    expiresOnTurn: turn + (n.requiresResponse ? 3 : 2),
+    severity: n.severity as WorldEvent["severity"],
+    requiresResponse: n.requiresResponse,
+    responseOptions,
+    brazilImpact: n.brazilImpact
+      ? {
+          description: n.brazilImpact.description,
+          severity: n.brazilImpact.severity as BrazilImpact["severity"],
+          affectedAreas: n.brazilImpact.affectedAreas,
+          suggestedResponse: n.brazilImpact.suggestedResponse,
+        }
+      : null,
+    status: n.requiresResponse ? "active" : "ongoing",
+    playerResponse: null,
+    resolvedOnTurn: null,
+  };
+}
+
+/** Moves any world events whose deadline has passed into the resolved/expired archive. */
+function archiveExpiredWorldEvents(state: GameState): GameState {
+  const stillActive: WorldEvent[] = [];
+  const newlyArchived: WorldEvent[] = [];
+
+  for (const ev of state.worldEvents) {
+    if (
+      (ev.status === "active" || ev.status === "ongoing") &&
+      ev.expiresOnTurn <= state.turn
+    ) {
+      newlyArchived.push({
+        ...ev,
+        status: ev.requiresResponse ? "expired" : "resolved",
+        resolvedOnTurn: state.turn,
+      });
+    } else {
+      stillActive.push(ev);
+    }
+  }
+
+  if (newlyArchived.length === 0) return state;
+
+  return {
+    ...state,
+    worldEvents: stillActive,
+    resolvedWorldEvents: [...state.resolvedWorldEvents, ...newlyArchived].slice(-60),
+  };
+}
+
 /** Projects whose phase just crossed into "completed" between the two turn numbers. */
 function findNewlyCompletedProjects(
   projects: ProjectDefinition[],
@@ -209,6 +315,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const [activeFailureAlerts, setActiveFailureAlerts] = useState<FailureThreshold[]>(
     []
+  );
+
+  const [respondingWorldEventId, setRespondingWorldEventId] = useState<string | null>(
+    null
+  );
+  const [worldEventResponseError, setWorldEventResponseError] = useState<string | null>(
+    null
   );
 
   const issueOrders = useCallback(
@@ -460,14 +573,58 @@ export function GameProvider({ children }: { children: ReactNode }) {
           .map((id) => describeTriggeredRule(id))
           .filter((line): line is string => Boolean(line));
 
+        // --- Step 2 (world events): plan + generate this turn's events ----
+        const eventPlan = planTurnEvents(ticked, ticked.turn);
+        const newWorldEvents: WorldEvent[] = [...eventPlan.deterministicEvents];
+
+        if (eventPlan.randomSeeds.length > 0 || eventPlan.generateNovel) {
+          try {
+            const weRes = await fetch("/api/world-events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                context: buildAdvisorContext(ticked),
+                seeds: eventPlan.randomSeeds.map((s) => ({
+                  title: s.title,
+                  type: s.type,
+                  category: s.category,
+                  severity: s.severity,
+                })),
+                generateNovel: eventPlan.generateNovel,
+              }),
+            });
+            const weData = await weRes.json();
+
+            if (weRes.ok) {
+              eventPlan.randomSeeds.forEach((seed, i) => {
+                newWorldEvents.push(
+                  buildWorldEventFromSeed(seed, weData.randomEvents?.[i], ticked.turn, i)
+                );
+              });
+              if (weData.novelEvent) {
+                newWorldEvents.push(buildWorldEventFromNovel(weData.novelEvent, ticked.turn));
+              }
+            }
+          } catch (weErr) {
+            console.error("World event generation failed:", weErr);
+          }
+        }
+
+        // --- Steps 3-4: add new events, then archive any that expired -----
+        const withNewEvents: GameState = {
+          ...ticked,
+          worldEvents: [...ticked.worldEvents, ...newWorldEvents],
+        };
+        const eventsResolved = archiveExpiredWorldEvents(withNewEvents);
+
         // --- Step 5: project completions --------------------------------
         const newlyCompleted = findNewlyCompletedProjects(
-          ticked.projects,
+          eventsResolved.projects,
           previousTurn,
-          ticked.turn
+          eventsResolved.turn
         );
         let finalState: GameState = {
-          ...ticked,
+          ...eventsResolved,
           worldDriftLog,
         };
         if (newlyCompleted.length > 0) {
@@ -523,6 +680,90 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const dismissFailureAlert = useCallback(() => {
     setActiveFailureAlerts((prev) => prev.slice(1));
   }, []);
+
+  const respondToWorldEvent = useCallback(
+    async (eventId: string, optionId: string): Promise<string> => {
+      const current = gameState;
+      const worldEvent = current.worldEvents.find((e) => e.id === eventId);
+      if (!worldEvent) return "";
+      const option = worldEvent.responseOptions.find((o) => o.id === optionId);
+      if (!option) return "";
+
+      setRespondingWorldEventId(eventId);
+      setWorldEventResponseError(null);
+
+      try {
+        if (
+          option.requiresActionPoints > 0 &&
+          current.actionPoints < option.requiresActionPoints
+        ) {
+          throw new Error("Not enough action points to choose this response.");
+        }
+
+        let narrative = option.consequenceNarrative;
+        try {
+          const res = await fetch("/api/world-event-response", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventTitle: worldEvent.title,
+              eventDescription: worldEvent.description,
+              optionLabel: option.label,
+              consequenceHint: option.consequenceNarrative,
+              context: {
+                countryName: current.countryName,
+                playerTitle: current.playerTitle,
+                turn: current.turn,
+                date: current.date,
+                approval: current.approval,
+                securityIndex: current.securityIndex,
+                recentEvents: [],
+              },
+            }),
+          });
+          const data = await res.json();
+          if (res.ok && typeof data.narrative === "string") {
+            narrative = data.narrative;
+          }
+        } catch {
+          // fall back to the pre-authored consequenceNarrative
+        }
+
+        const effected = applyNumericEffects(
+          {
+            ...current,
+            worldEvents: current.worldEvents.map((e) => ({ ...e })),
+            resolvedWorldEvents: [...current.resolvedWorldEvents],
+          },
+          option.effects
+        );
+
+        const resolvedEvent: WorldEvent = {
+          ...worldEvent,
+          status: "resolved",
+          playerResponse: option.label,
+          resolvedOnTurn: current.turn,
+        };
+
+        setGameState({
+          ...effected,
+          actionPoints: Math.max(0, effected.actionPoints - option.requiresActionPoints),
+          worldEvents: effected.worldEvents.filter((e) => e.id !== eventId),
+          resolvedWorldEvents: [...effected.resolvedWorldEvents, resolvedEvent].slice(-60),
+        });
+
+        return narrative;
+      } catch (err) {
+        setWorldEventResponseError(
+          err instanceof Error ? err.message : "Something went wrong."
+        );
+        return "";
+      } finally {
+        setRespondingWorldEventId(null);
+      }
+    },
+    [gameState]
+  );
 
   const resolveEvent = useCallback(
     async (optionId: string) => {
@@ -766,6 +1007,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         declineInterview,
         activeFailureAlerts,
         dismissFailureAlert,
+        respondToWorldEvent,
+        respondingWorldEventId,
+        worldEventResponseError,
       }}
     >
       {children}
