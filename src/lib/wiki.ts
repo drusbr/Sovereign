@@ -1,3 +1,32 @@
+import {
+  inflationArticle,
+  gdpArticle,
+  economicGrowthArticle,
+  unemploymentArticle,
+  interestRatesArticle,
+  governmentSpendingArticle,
+  taxationArticle,
+  nationalDebtArticle,
+  debtToGdpArticle,
+  tradeBalanceArticle,
+  fdiArticle,
+  exchangeRatesArticle,
+  productivityArticle,
+  recessionsArticle,
+} from "@/lib/wiki/economics";
+
+import {
+  congressArticle,
+  approvalRatingsArticle,
+  politicalCapitalArticle,
+  electionsArticle,
+  politicalPartiesArticle,
+  coalitionBuildingArticle,
+  civilLibertiesArticle,
+  publicOpinionArticle,
+  politicalCrisesArticle,
+} from "@/lib/wiki/government";
+
 export interface WikiArticle {
   slug: string;
   title: string;
@@ -196,10 +225,135 @@ export interface SimulationArticleContent {
 
 export type ArticleContent = StandardArticleContent | SimulationArticleContent;
 
+const ARTICLE_CONTENT: Record<string, ArticleContent> = {
+  "economics/inflation": {
+    template: "standard",
+    ...inflationArticle,
+  },
+
+  "economics/gdp": {
+    template: "standard",
+    ...gdpArticle,
+  },
+
+  "economics/economic-growth": {
+    template: "standard",
+    ...economicGrowthArticle,
+  },
+
+  "economics/unemployment": {
+    template: "standard",
+    ...unemploymentArticle,
+  },
+
+  "economics/interest-rates": {
+    template: "standard",
+    ...interestRatesArticle,
+  },
+
+  "economics/government-spending": {
+    template: "standard",
+    ...governmentSpendingArticle,
+  },
+
+  "economics/taxation": {
+    template: "standard",
+    ...taxationArticle,
+  },
+
+  "economics/national-debt": {
+    template: "standard",
+    ...nationalDebtArticle,
+  },
+
+  "economics/debt-to-gdp-ratio": {
+    template: "standard",
+    ...debtToGdpArticle,
+  },
+
+  "economics/trade-balance": {
+    template: "standard",
+    ...tradeBalanceArticle,
+  },
+
+  "economics/fdi": {
+    template: "standard",
+    ...fdiArticle,
+  },
+
+  "economics/exchange-rates": {
+    template: "standard",
+    ...exchangeRatesArticle,
+  },
+
+  "economics/productivity": {
+    template: "standard",
+    ...productivityArticle,
+  },
+
+  "economics/recessions": {
+    template: "standard",
+    ...recessionsArticle,
+  },
+
+  "government/congress": {
+  template: "standard",
+  ...congressArticle,
+},
+
+"government/approval-ratings": {
+  template: "standard",
+  ...approvalRatingsArticle,
+},
+
+"government/political-capital": {
+  template: "standard",
+  ...politicalCapitalArticle,
+},
+
+"government/elections": {
+  template: "standard",
+  ...electionsArticle,
+},
+
+"government/political-parties": {
+  template: "standard",
+  ...politicalPartiesArticle,
+},
+
+"government/coalition-building": {
+  template: "standard",
+  ...coalitionBuildingArticle,
+},
+
+"government/civil-liberties": {
+  template: "standard",
+  ...civilLibertiesArticle,
+},
+
+"government/public-opinion": {
+  template: "standard",
+  ...publicOpinionArticle,
+},
+
+"government/political-crises": {
+  template: "standard",
+  ...politicalCrisesArticle,
+},
+};
+
 export function getArticleContent(
   category: WikiCategory,
   article: WikiArticle
 ): ArticleContent {
+  const key = `${category.slug}/${article.slug}`;
+
+  const content = ARTICLE_CONTENT[key];
+
+  if (content) {
+    return content;
+  }
+
   if (category.slug === "simulation") {
     return {
       template: "simulation",
