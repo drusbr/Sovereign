@@ -30,23 +30,23 @@ export function ArticleView({
   return (
     <div className="mx-auto max-w-[680px] px-8 py-10">
       <p className="text-xs text-text-muted">
-        Wiki <span className="mx-1 text-text-muted/50">›</span> {category.label}{" "}
-        <span className="mx-1 text-text-muted/50">›</span> {article.title}
+        Wiki <span className="mx-1 text-text-muted/50">›</span>{" "}
+        {category.label}{" "}
+        <span className="mx-1 text-text-muted/50">›</span>{" "}
+        {article.title}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight text-text">
           {article.title}
         </h1>
+
         <span
           className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${category.colorClasses.text} ${category.colorClasses.bg} ${category.colorClasses.border}`}
         >
           {category.label}
         </span>
       </div>
-      <p className="mt-2 text-xs italic text-text-muted">
-        Content coming soon
-      </p>
 
       <div className="mt-8 space-y-8" style={{ lineHeight: 1.7 }}>
         {content.template === "standard" ? (
@@ -58,7 +58,9 @@ export function ArticleView({
 
             <section className="space-y-2.5">
               <SectionHeading>Why does it matter?</SectionHeading>
-              <p className="text-[15px] text-text">{content.whyItMatters}</p>
+              <p className="text-[15px] text-text">
+                {content.whyItMatters}
+              </p>
             </section>
 
             <section className="space-y-2.5">
@@ -80,7 +82,9 @@ export function ArticleView({
             </section>
 
             <section className="space-y-2.5">
-              <SectionHeading>How can a government influence it?</SectionHeading>
+              <SectionHeading>
+                How can a government influence it?
+              </SectionHeading>
               <ul className="list-inside list-disc space-y-1.5 text-[15px] text-text">
                 {content.howGovernmentInfluences.map((item) => (
                   <li key={item}>{item}</li>
@@ -106,7 +110,9 @@ export function ArticleView({
             </section>
 
             <section className="space-y-2.5">
-              <SectionHeading>What this means for your decisions</SectionHeading>
+              <SectionHeading>
+                What this means for your decisions
+              </SectionHeading>
               <p className="text-[15px] text-text">
                 {content.decisionImplications}
               </p>
