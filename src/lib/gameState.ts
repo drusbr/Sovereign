@@ -241,6 +241,30 @@ export interface BrazilImpact {
   suggestedResponse: string;
 }
 
+export interface EducationState {
+  // Core indices — 0 to 100
+  infrastructureIndex: number; // physical school quality
+  teacherQualityIndex: number; // teacher pay, training, retention
+  curriculumIndex: number; // curriculum quality and modernisation
+  accessIndex: number; // enrollment and attendance rates
+
+  // Outcome metrics — realistic Brazilian starting values
+  primaryEnrollmentRate: number; // percentage, start ~96
+  secondaryCompletionRate: number; // percentage, start ~68
+  literacyRate: number; // percentage, start ~93
+  dropoutRate: number; // percentage, start ~11
+  pisaEquivalentScore: number; // 0-600 scale, start ~400
+
+  // Composite
+  educationIndex: number; // 0-100 composite of the four core indices
+
+  // Lagged history for cascade effects — stores past values
+  // Used to apply effects with realistic time delays
+  completionRateHistory: number[]; // last 20 turns
+  literacyHistory: number[]; // last 20 turns
+  pisaHistory: number[]; // last 20 turns
+}
+
 export interface WorldEvent {
   id: string;
   type: "domestic" | "international";
@@ -343,6 +367,9 @@ export interface GameState {
   playerAlignment: "left" | "centre" | "right";
   /** Avatar seed for the president's selected portrait. */
   playerPortrait: string;
+  // Education metrics
+  education: EducationState;
+  educationHistory: number[]; // tracks educationIndex over last 7 turns for sparkline
 }
 
 const START_DATE = new Date(Date.UTC(2026, 0, 8)); // January 8th 2026
@@ -789,6 +816,22 @@ export function createInitialGameState(): GameState {
     playerBackground: "",
     playerAlignment: "centre",
     playerPortrait: "portrait-01",
+    education: {
+      infrastructureIndex: 42,
+      teacherQualityIndex: 38,
+      curriculumIndex: 45,
+      accessIndex: 71,
+      primaryEnrollmentRate: 96.2,
+      secondaryCompletionRate: 68.4,
+      literacyRate: 93.1,
+      dropoutRate: 10.8,
+      pisaEquivalentScore: 401,
+      educationIndex: 49,
+      completionRateHistory: Array(20).fill(68.4),
+      literacyHistory: Array(20).fill(93.1),
+      pisaHistory: Array(20).fill(401),
+    },
+    educationHistory: [49, 49, 49, 49, 49, 49, 49],
   };
 }
 
@@ -818,6 +861,25 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     triggeredFailureThresholdIds: saved.triggeredFailureThresholdIds ?? [],
     worldDriftLog: saved.worldDriftLog ?? [],
     advisors: saved.advisors ?? defaults.advisors,
+    // Backfill education metrics for saves that predate this system
+    education: !saved.education
+      ? defaults.education
+      : {
+          ...defaults.education,
+          ...saved.education,
+          completionRateHistory:
+            saved.education.completionRateHistory ??
+            Array(20).fill(saved.education.secondaryCompletionRate ?? 68.4),
+          literacyHistory:
+            saved.education.literacyHistory ??
+            Array(20).fill(saved.education.literacyRate ?? 93.1),
+          pisaHistory:
+            saved.education.pisaHistory ??
+            Array(20).fill(saved.education.pisaEquivalentScore ?? 401),
+        },
+    educationHistory: saved.education
+      ? (saved.educationHistory ?? defaults.educationHistory)
+      : defaults.educationHistory,
     projects: (saved.projects ?? defaults.projects).map((project) => ({
       ...project,
       ...(project.name === "STU Tax Reform Bill" ? {

@@ -9,6 +9,7 @@ import {
   loadGameState,
   type CampaignRecord,
 } from "@/lib/supabase/campaigns";
+import { fmtPct } from "@/lib/format";
 
 const MAX_CAMPAIGNS = 3;
 
@@ -193,7 +194,7 @@ export default function CampaignsPage() {
                       approvals[campaign.id] ?? 0
                     )}`}
                   >
-                    {approvals[campaign.id] ?? "—"}%
+                    {fmtPct(approvals[campaign.id])}
                   </span>
                 </div>
 

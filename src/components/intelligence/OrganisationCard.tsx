@@ -2,6 +2,7 @@ import { TrendingUp, TrendingDown, ArrowRight, Skull, type LucideIcon } from "lu
 import type { CriminalOrganisation } from "@/lib/gameState";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
 import { ORG_TYPE_LABELS, THREAT_LEVEL_STYLES, capacityColor } from "@/lib/intelligence";
+import { fmtPct } from "@/lib/format";
 
 const TREND_META: Record<
   CriminalOrganisation["trend"],
@@ -58,7 +59,7 @@ export function OrganisationCard({ org }: { org: CriminalOrganisation }) {
           <span>Operational Capacity</span>
           <span className="flex items-center gap-1 font-semibold text-text">
             <trend.Icon size={12} style={{ color: trend.color }} />
-            {org.capacity}%
+            {fmtPct(org.capacity)}
           </span>
         </div>
         <ProgressBar value={org.capacity} color={capacityColor(org.capacity)} />

@@ -2,6 +2,7 @@ import { ArrowDown, ArrowRight, ArrowUp, type LucideIcon } from "lucide-react";
 import type { DiplomaticRelation } from "@/lib/gameState";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
 import { RELATIONSHIP_STATUS_STYLES, RELATION_TYPE_LABELS } from "@/lib/diplomacy";
+import { fmtScore } from "@/lib/format";
 
 const TREND_META: Record<
   DiplomaticRelation["trend"],
@@ -50,7 +51,7 @@ export function RelationCard({
           <span>Relationship</span>
           <span className="flex items-center gap-1 font-semibold text-text">
             <trend.Icon size={12} style={{ color: trend.color }} />
-            {relation.relationshipScore}
+            {fmtScore(relation.relationshipScore)}
           </span>
         </div>
         <ProgressBar value={relation.relationshipScore} color={statusStyle.barColor} />

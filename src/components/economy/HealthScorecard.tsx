@@ -4,6 +4,7 @@ import {
   publicInvestmentColor,
   sovereignDebtColor,
 } from "@/lib/economy";
+import { fmtDelta, fmtPct, fmtRating } from "@/lib/format";
 
 const INFLATION_TARGET = 3;
 
@@ -41,17 +42,17 @@ export function HealthScorecard({ gameState }: { gameState: GameState }) {
     <div className="rounded-lg border border-border bg-panel/60 px-4">
       <ScorecardRow
         label="Sovereign Debt"
-        value={`${gameState.sovereignDebt}% of GDP`}
+        value={`${fmtPct(gameState.sovereignDebt)} of GDP`}
         color={sovereignDebtColor(gameState.sovereignDebt)}
       />
       <ScorecardRow
         label="Public Investment"
-        value={`${gameState.publicInvestment}% of GDP`}
+        value={`${fmtPct(gameState.publicInvestment)} of GDP`}
         color={publicInvestmentColor(gameState.publicInvestment)}
       />
       <ScorecardRow
         label="Credit Rating"
-        value={gameState.creditRating}
+        value={fmtRating(gameState.creditRating)}
         color={
           ratingStyle.text === "text-positive"
             ? "#10b981"
@@ -62,17 +63,17 @@ export function HealthScorecard({ gameState }: { gameState: GameState }) {
       />
       <ScorecardRow
         label="Inflation vs Target"
-        value={`${gameState.inflation}% vs ${INFLATION_TARGET}% (${inflationGap > 0 ? "+" : ""}${inflationGap.toFixed(1)}pp)`}
+        value={`${fmtPct(gameState.inflation)} vs ${fmtPct(INFLATION_TARGET)} (${fmtDelta(inflationGap)}pp)`}
         color={inflationGap > 2 ? "#ef4444" : inflationGap > 0 ? "#f59e0b" : "#10b981"}
       />
       <ScorecardRow
         label="Congressional Support (economic reforms)"
-        value={`${gameState.congressionalSupport}%`}
+        value={fmtPct(gameState.congressionalSupport)}
         color={genericThresholdColor(gameState.congressionalSupport)}
       />
       <ScorecardRow
         label="Business Environment Index"
-        value={`${gameState.civilLiberties}%`}
+        value={fmtPct(gameState.civilLiberties)}
         color={genericThresholdColor(gameState.civilLiberties)}
       />
     </div>

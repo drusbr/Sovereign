@@ -15,6 +15,7 @@ import {
 import { applyActionValidation } from "@/lib/actions/validation";
 import { inferExplicitFiscalAction, inferExplicitLegislativeAction } from "@/lib/actions/interpretation";
 import { renderEvent } from "@/lib/proceduralWriter";
+import { fmtDelta, fmtDeltaPct } from "@/lib/format";
 
 const AUTHORITY_CHECK_DELAY_MS = 800;
 
@@ -246,8 +247,7 @@ export default function OrdersPage() {
                       : "bg-panel text-text-muted"
                 }`}
               >
-                {lastResult.approvalChange > 0 ? "+" : ""}
-                {lastResult.approvalChange}% approval
+                {fmtDeltaPct(lastResult.approvalChange)} approval
               </span>
               {lastResult.securityIndexChange !== 0 && (
                 <span
@@ -257,8 +257,7 @@ export default function OrdersPage() {
                       : "bg-danger/15 text-danger"
                   }`}
                 >
-                  {lastResult.securityIndexChange > 0 ? "+" : ""}
-                  {lastResult.securityIndexChange} security
+                  {fmtDelta(lastResult.securityIndexChange)} security
                 </span>
               )}
             </div>

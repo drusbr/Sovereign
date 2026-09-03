@@ -123,7 +123,7 @@ test("project completion and its conservative effect occur exactly once", () => 
   const created = createLifecycleEntities(cleanState(), [short]);
   const completed = processLifecycleTurn(created, 1).state;
   assert.equal(completed.projects[0].lifecycle.status, "COMPLETED");
-  assert.equal(completed.approval, created.approval + 2);
+  assert.equal(completed.approval, created.approval + 3);
   assert.ok(completed.projects[0].completionRecord);
   const again = processLifecycleTurn(completed, 2).state;
   assert.equal(again.approval, completed.approval);

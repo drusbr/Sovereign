@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { fmtInt } from "@/lib/format";
 
 const LABELS = ["T-6", "T-5", "T-4", "T-3", "T-2", "T-1", "Now"];
 
@@ -43,7 +44,7 @@ export function BusinessFormationChart({ data }: { data: number[] }) {
               fontSize: 12,
             }}
             labelStyle={{ color: "#f1f5f9" }}
-            formatter={(value) => [Number(value).toLocaleString(), "Registrations"]}
+            formatter={(value) => [fmtInt(Number(value)), "Registrations"]}
           />
           <Bar dataKey="value" fill="#3b82f6" radius={[3, 3, 0, 0]} />
         </BarChart>

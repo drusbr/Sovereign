@@ -2,6 +2,7 @@ import type { ProposedAction } from "@/lib/actions/types";
 import type { GameState } from "@/lib/gameState";
 import { applyFiscalAction, isFiscalAction } from "@/lib/fiscal";
 import { createLifecycleEntities } from "@/lib/operationsProjectsEngine";
+import { fmtPct } from "@/lib/format";
 
 export type LegislativeStatus =
   | "INTRODUCED"
@@ -173,7 +174,7 @@ export function calculateCongressSupport(state: GameState, proceeding: Legislati
   );
   const uncertainty = clamp(12 + proceeding.uncertaintyModifier, 3, 24);
   const sources = [
-    `Governing coalition provides a ${state.congressionalSupport}% political base`,
+    `Governing coalition provides a ${fmtPct(state.congressionalSupport)} political base`,
     ...(approvalEffect > 0 ? ["Public approval strengthens pressure on wavering legislators"] : []),
     ...(fit > 0 ? ["The proposal fits the governing alignment"] : []),
     ...(priority > 0 ? ["The bill advances a declared presidential priority"] : []),

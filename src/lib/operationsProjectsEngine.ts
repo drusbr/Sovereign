@@ -2,6 +2,7 @@ import {
   EMPTY_OPERATION_METRICS,
   clamp0to100,
   type ActiveOperation,
+  type EducationState,
   type GameState,
   type OperationMetrics,
 } from "@/lib/gameState";
@@ -64,6 +65,101 @@ function titleFromAction(action: ProposedAction, fallback: string): string {
   if (typeof supplied === "string" && supplied.trim()) return supplied.trim().slice(0, 100);
   const clean = action.rawOrder.replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
   return clean.length <= 90 ? clean : fallback;
+}
+
+/**
+ * Maps an education-related bill/order to a specialised education project
+ * with a proper `educationEffect` payload — the generic `createProjectFromAction`
+ * has no concept of the education subsystem, so bills matching education
+ * keywords are routed here instead (see `createLifecycleEntities`).
+ */
+function createEducationProject(action: ProposedAction, state: GameState): ProjectDefinition | null {
+  const text = action.rawOrder.toLowerCase();
+
+  // Determine what kind of education project this is
+  const isRenovation = /school renovation|renova[çc][ãa]o escolar|escola viva|public school|infraestrutura escolar/.test(text);
+  const isCurriculum = /curriculum|curr[íi]culo|educational reform|reforma educacional|ensino/.test(text);
+  const isTeachers = /teacher|professor|mestres|teacher salary|teacher quality/.test(text);
+  const isEarlyChildhood = /creche|early childhood|pr[ée]-escola|daycare/.test(text);
+  const isVocational = /vocational|senai|technical education|ensino t[ée]cnico/.test(text);
+
+  if (!isRenovation && !isCurriculum && !isTeachers && !isEarlyChildhood && !isVocational) {
+    return null; // not an education project
+  }
+
+  // Extract budget from the structured action if available, otherwise estimate from text
+  const budgetMatch = text.match(/r\$\s*(\d+(?:\.\d+)?)\s*b/i);
+  const estimatedBudget = fiscalAmountBillions(action) ?? (budgetMatch ? parseFloat(budgetMatch[1]) : 5.0);
+
+  // Determine duration based on project type and scale
+  const duration = isRenovation ? 10
+    : isCurriculum ? 8
+    : isTeachers ? 6
+    : isEarlyChildhood ? 7
+    : 6; // vocational
+
+  const projectConfig: {
+    name: string;
+    description: string;
+    expectedOutcome: string;
+    statusText: string;
+    unlocks: string;
+    educationEffect: Partial<EducationState>;
+  } = isRenovation ? {
+    name: "National School Renovation Programme",
+    description: "Systematic renovation and upgrading of public school infrastructure, prioritising schools with the lowest condition indices. Includes new facilities, equipment, and digital connectivity.",
+    expectedOutcome: "Infrastructure Index +18 to +25 over project duration. Enrollment and completion rates improve as school quality attracts attendance.",
+    statusText: "Planning and procurement phase — site assessments underway",
+    unlocks: "Improved infrastructure index feeds into enrollment, completion, and eventually PISA scores over 8-15 turns",
+    educationEffect: { infrastructureIndex: 20 },
+  } : isCurriculum ? {
+    name: "National Curriculum Modernisation",
+    description: "Reform of the national curriculum framework with emphasis on critical thinking, STEM, digital literacy, and practical skills aligned with labour market needs.",
+    expectedOutcome: "Curriculum Index +15 to +20. PISA equivalent score improvements visible after 12-15 turns as cohorts progress through the reformed system.",
+    statusText: "Commission established — curriculum commission convened with educators and experts",
+    unlocks: "Long-term GDP and FDI benefits as workforce quality improves over 15+ turns",
+    educationEffect: { curriculumIndex: 18 },
+  } : isTeachers ? {
+    name: "Teacher Professionalisation Programme",
+    description: "National teacher salary reform, competitive entry standards, mandatory professional development, and a career progression ladder for public school educators.",
+    expectedOutcome: "Teacher Quality Index +20 to +28. Dropout rates fall as teaching quality improves. Effects compound over subsequent turns.",
+    statusText: "Salary reform enacted — implementation rolling out across states",
+    unlocks: "Dropout rate reduction feeds into secondary completion and eventually literacy and PISA improvements",
+    educationEffect: { teacherQualityIndex: 22 },
+  } : isEarlyChildhood ? {
+    name: "Universal Early Childhood Programme",
+    description: "Expansion of public creche and pré-escola provision for children aged 0-5, with quality standards and trained staff requirements.",
+    expectedOutcome: "Access Index +12. Long-term literacy and completion rate improvements as better-prepared cohorts enter primary school.",
+    statusText: "Facility expansion tendered — new creche places being created",
+    unlocks: "Primary enrollment and eventual literacy improvements over 10-18 turns",
+    educationEffect: { accessIndex: 14 },
+  } : {
+    name: "Vocational Education Expansion",
+    description: "Expansion of SENAI technical education partnerships, apprenticeship quotas for medium and large businesses, and vocational pathways from secondary school.",
+    expectedOutcome: "Curriculum Index +10, Access Index +8. Youth unemployment falls as vocational graduates enter formal labour market.",
+    statusText: "SENAI partnerships being established — apprenticeship framework in preparation",
+    unlocks: "Unemployment reduction and informal economy shrinkage over 8-12 turns",
+    educationEffect: { curriculumIndex: 10, accessIndex: 8 },
+  };
+
+  return {
+    id: `education-project-${action.id}`,
+    name: projectConfig.name,
+    category: "Social",
+    startTurn: state.turn,
+    endTurn: state.turn + duration,
+    statusText: projectConfig.statusText,
+    unlocks: projectConfig.unlocks,
+    actionId: action.id,
+    description: projectConfig.description,
+    scope: "National",
+    geographicTarget: "All states — lowest-performing regions prioritised",
+    expectedOutcome: projectConfig.expectedOutcome,
+    difficulty: estimatedBudget > 10 ? "HIGH" : estimatedBudget > 4 ? "MEDIUM" : "LOW",
+    lifecycle: createLifecycle(state.turn, duration, estimatedBudget),
+    completionEffectApplied: false,
+    educationEffect: projectConfig.educationEffect,
+  };
 }
 
 export function createProjectFromAction(state: GameState, action: ProposedAction): ProjectDefinition | null {
@@ -141,6 +237,22 @@ export function createLifecycleEntities(
     if (action.authority.type !== "EXECUTIVE" && !(options.legislationPassed && action.authority.type === "LEGISLATIVE")) continue;
     if (next.projects.some((item) => item.actionId === action.id)
       || next.activeOperations.some((item) => item.actionId === action.id)) continue;
+
+    // Check if this is an education bill that needs a specialised project
+    const actionText = action.rawOrder.toLowerCase();
+    const isEducationBill = /school|curriculum|teacher|professor|education|creche|vocational|senai|ensino/.test(actionText);
+    if (isEducationBill) {
+      const educationProject = createEducationProject(action, next);
+      if (educationProject) {
+        next = {
+          ...next,
+          projects: [...next.projects, educationProject],
+          activeProjects: next.activeProjects + 1,
+        };
+        continue; // skip the generic createProjectFromAction for this action
+      }
+    }
+
     const project = createProjectFromAction(next, action);
     if (project) {
       next = { ...next, projects: [...next.projects, project], activeProjects: next.activeProjects + 1 };
@@ -165,11 +277,65 @@ function fundingUnavailable(state: GameState): boolean {
 
 function applyProjectCompletionEffect(state: GameState, project: ProjectDefinition): GameState {
   if (project.completionEffectApplied) return state;
-  if (project.category === "Social") return { ...state, approval: clamp0to100(state.approval + 2) };
-  if (project.category === "Infrastructure") return { ...state, gdpGrowth: state.gdpGrowth + 0.1, publicInvestment: state.publicInvestment + 0.1 };
-  if (project.category === "Security") return { ...state, securityIndex: clamp0to100(state.securityIndex + 2) };
-  if (project.category === "Diplomatic") return { ...state, globalStanding: clamp0to100(state.globalStanding + 1) };
-  return { ...state, businessRegistrations: state.businessRegistrations + 200 };
+  const next = { ...state };
+
+  if (project.educationEffect) {
+    const currentEdu = { ...next.education };
+    const effect = project.educationEffect;
+
+    if (effect.infrastructureIndex) {
+      currentEdu.infrastructureIndex = clamp0to100(currentEdu.infrastructureIndex + effect.infrastructureIndex);
+    }
+    if (effect.teacherQualityIndex) {
+      currentEdu.teacherQualityIndex = clamp0to100(currentEdu.teacherQualityIndex + effect.teacherQualityIndex);
+    }
+    if (effect.curriculumIndex) {
+      currentEdu.curriculumIndex = clamp0to100(currentEdu.curriculumIndex + effect.curriculumIndex);
+    }
+    if (effect.accessIndex) {
+      currentEdu.accessIndex = clamp0to100(currentEdu.accessIndex + effect.accessIndex);
+    }
+
+    next.education = currentEdu;
+    // Immediate approval boost — visible state investment
+    next.approval = clamp0to100(next.approval + 3);
+    // Small FDI signal — skilled workforce narrative
+    next.fdiFlow = Math.min(30, next.fdiFlow + 0.3);
+    return next;
+  }
+
+  if (project.category === "Social") {
+    next.approval = clamp0to100(next.approval + 3);
+    next.civilLiberties = clamp0to100(next.civilLiberties + 1);
+  } else if (project.category === "Infrastructure") {
+    next.gdpGrowth = Math.min(8, next.gdpGrowth + 0.15);
+    next.publicInvestment = Math.min(10, next.publicInvestment + 0.15);
+    next.fdiFlow = Math.min(30, next.fdiFlow + 0.5);
+    next.tradeBalance = next.tradeBalance + 0.3;
+  } else if (project.category === "Security") {
+    next.securityIndex = clamp0to100(next.securityIndex + 5);
+    next.approval = clamp0to100(next.approval + 2);
+    // Reduce capacity of the most threatening organisation
+    const highestCapacityOrg = [...next.criminalOrganisations].sort((a, b) => b.capacity - a.capacity)[0];
+    if (highestCapacityOrg) {
+      next.criminalOrganisations = next.criminalOrganisations.map((org) =>
+        org.id === highestCapacityOrg.id
+          ? { ...org, capacity: Math.max(0, org.capacity - 8), trend: "weakening" as const }
+          : org
+      );
+    }
+  } else if (project.category === "Economic") {
+    next.gdpGrowth = Math.min(8, next.gdpGrowth + 0.2);
+    next.businessRegistrations = Math.round(next.businessRegistrations + 500);
+    next.unemployment = Math.max(0, next.unemployment - 0.3);
+    next.fdiFlow = Math.min(30, next.fdiFlow + 0.8);
+  } else if (project.category === "Diplomatic") {
+    next.globalStanding = clamp0to100(next.globalStanding + 3);
+    next.internationalPressure = clamp0to100(next.internationalPressure - 5);
+    next.allianceStrength = clamp0to100(next.allianceStrength + 2);
+  }
+
+  return next;
 }
 
 function processProjects(state: GameState, turn: number): { state: GameState; reports: LifecycleTurnReport[] } {

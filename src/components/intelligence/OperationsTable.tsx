@@ -1,6 +1,7 @@
 import type { ActiveOperation } from "@/lib/gameState";
 import { OPERATION_STATUS_STYLES, OPERATION_TYPE_STYLES } from "@/lib/intelligence";
 import { SectionHeader } from "@/components/SectionHeader";
+import { fmtPct } from "@/lib/format";
 
 export function OperationsTable({
   operations,
@@ -71,7 +72,7 @@ export function OperationsTable({
                       T{op.startTurn}
                     </td>
                     <td className="min-w-40 px-4 py-3 text-xs text-text-muted">
-                      <p>{op.lifecycle.progress.toFixed(0)}% · {op.phase}</p>
+                      <p>{fmtPct(op.lifecycle.progress)} · {op.phase}</p>
                       <p>R${op.lifecycle.spent.toFixed(2)}bn / R${op.lifecycle.totalBudget.toFixed(2)}bn</p>
                       <p>{op.lifecycle.elapsedTurns}/{op.lifecycle.plannedDurationTurns} turns</p>
                     </td>

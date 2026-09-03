@@ -6,6 +6,7 @@ import {
   internationalPressureColor,
   recentGlobalStandingTrend,
 } from "@/lib/diplomacy";
+import { fmtInt, fmtScore } from "@/lib/format";
 
 export function KpiStrip({ gameState }: { gameState: GameState }) {
   const trend = recentGlobalStandingTrend(gameState.diplomaticEvents, gameState.turn);
@@ -24,7 +25,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
             className="text-2xl font-bold"
             style={{ color: globalStandingColor(gameState.globalStanding) }}
           >
-            {gameState.globalStanding}
+            {fmtScore(gameState.globalStanding)}
           </p>
           <TrendIcon size={14} className={trendColor} />
         </div>
@@ -35,7 +36,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           Active Negotiations
         </p>
         <p className="mt-1.5 text-2xl font-bold text-text">
-          {gameState.activeNegotiations}
+          {fmtInt(gameState.activeNegotiations)}
         </p>
         <p className="mt-1 text-xs text-text-muted">ongoing diplomatic processes</p>
       </div>
@@ -48,7 +49,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           className="mt-1.5 text-2xl font-bold"
           style={{ color: internationalPressureColor(gameState.internationalPressure) }}
         >
-          {gameState.internationalPressure}
+          {fmtScore(gameState.internationalPressure)}
         </p>
         <p className="mt-1 text-xs text-text-muted">external pressure index</p>
       </div>
@@ -58,7 +59,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           Alliance Strength
         </p>
         <p className="mt-1.5 text-2xl font-bold text-text">
-          {gameState.allianceStrength}
+          {fmtScore(gameState.allianceStrength)}
         </p>
         <div className="mt-2">
           <ProgressBar value={gameState.allianceStrength} color="#3b82f6" />

@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { MediaEvent } from "@/lib/gameState";
 import { SectionHeader } from "@/components/SectionHeader";
+import { fmtDelta, fmtScore } from "@/lib/format";
 
 function SentimentChart({
   history,
@@ -57,7 +58,7 @@ function SentimentChart({
             }}
             labelStyle={{ color: "#f1f5f9" }}
             labelFormatter={(v) => `Turn ${v}`}
-            formatter={(value) => [`${value}`, "Sentiment"]}
+            formatter={(value) => [fmtScore(Number(value)), "Sentiment"]}
           />
           <ReferenceLine y={50} stroke="#64748b" strokeDasharray="4 4" />
           <Line
@@ -121,8 +122,7 @@ export function SentimentTrend({
                             : "text-text-muted"
                       }`}
                     >
-                      {event.sentimentImpact > 0 ? "+" : ""}
-                      {event.sentimentImpact}
+                      {fmtDelta(event.sentimentImpact, 0)}
                     </td>
                   </tr>
                 ))}

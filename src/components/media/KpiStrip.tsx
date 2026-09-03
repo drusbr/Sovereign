@@ -1,6 +1,7 @@
 import { Globe2 } from "lucide-react";
 import type { GameState } from "@/lib/gameState";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
+import { fmtPct, fmtScore } from "@/lib/format";
 
 function sentimentColor(value: number): string {
   if (value > 60) return "#10b981";
@@ -35,7 +36,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           className="mt-1.5 text-2xl font-bold"
           style={{ color: sentimentColor(gameState.mediaSentiment) }}
         >
-          {gameState.mediaSentiment}%
+          {fmtPct(gameState.mediaSentiment)}
         </p>
         <p className="mt-1 text-xs text-text-muted">of coverage is favourable</p>
       </div>
@@ -45,7 +46,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           Coverage Index
         </p>
         <p className="mt-1.5 text-2xl font-bold text-text">
-          {gameState.pressCoverage}
+          {fmtScore(gameState.pressCoverage)}
           <span className="text-sm font-normal text-text-muted">/100</span>
         </p>
         <div className="mt-2">
@@ -72,7 +73,7 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
           className="mt-1.5 text-2xl font-bold"
           style={{ color: internationalColor(gameState.internationalCoverage) }}
         >
-          {gameState.internationalCoverage}%
+          {fmtPct(gameState.internationalCoverage)}
         </p>
       </div>
 

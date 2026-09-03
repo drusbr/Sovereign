@@ -1,5 +1,49 @@
-import type { CriminalOrganisation, GameState } from "@/lib/gameState";
-import { clamp0to100 } from "@/lib/gameState";
+import type { CriminalOrganisation, EducationState, GameState } from "@/lib/gameState";
+import { clamp0to100, pushCapped } from "@/lib/gameState";
+
+/**
+ * Rounds every numeric GameState field to a sensible display precision.
+ * Floating-point arithmetic accumulates noise (e.g. 4.368474999999999) across
+ * turns of drift/effect application — this is the single place that cleans it
+ * up before the state is shown to the player or persisted.
+ */
+export function roundGameStateNumbers(state: GameState): GameState {
+  return {
+    ...state,
+    approval: Math.round(state.approval * 10) / 10,
+    securityIndex: Math.round(state.securityIndex * 10) / 10,
+    gdpGrowth: Math.round(state.gdpGrowth * 100) / 100,
+    inflation: Math.round(state.inflation * 100) / 100,
+    unemployment: Math.round(state.unemployment * 100) / 100,
+    informalEconomy: Math.round(state.informalEconomy * 100) / 100,
+    congressionalSupport: Math.round(state.congressionalSupport * 10) / 10,
+    militaryMorale: Math.round(state.militaryMorale * 10) / 10,
+    civilLiberties: Math.round(state.civilLiberties * 10) / 10,
+    internationalPressure: Math.round(state.internationalPressure * 10) / 10,
+    fdiFlow: Math.round(state.fdiFlow * 100) / 100,
+    tradeBalance: Math.round(state.tradeBalance * 100) / 100,
+    sovereignDebt: Math.round(state.sovereignDebt * 100) / 100,
+    publicInvestment: Math.round(state.publicInvestment * 100) / 100,
+    mediaSentiment: Math.round(state.mediaSentiment * 10) / 10,
+    globalStanding: Math.round(state.globalStanding * 10) / 10,
+    allianceStrength: Math.round(state.allianceStrength * 10) / 10,
+    businessRegistrations: Math.round(state.businessRegistrations),
+    anipAssetsFrozen: Math.round(state.anipAssetsFrozen * 1000) / 1000,
+    education: {
+      ...state.education,
+      infrastructureIndex: Math.round(state.education.infrastructureIndex * 10) / 10,
+      teacherQualityIndex: Math.round(state.education.teacherQualityIndex * 10) / 10,
+      curriculumIndex: Math.round(state.education.curriculumIndex * 10) / 10,
+      accessIndex: Math.round(state.education.accessIndex * 10) / 10,
+      primaryEnrollmentRate: Math.round(state.education.primaryEnrollmentRate * 100) / 100,
+      secondaryCompletionRate: Math.round(state.education.secondaryCompletionRate * 100) / 100,
+      literacyRate: Math.round(state.education.literacyRate * 100) / 100,
+      dropoutRate: Math.round(state.education.dropoutRate * 100) / 100,
+      pisaEquivalentScore: Math.round(state.education.pisaEquivalentScore * 10) / 10,
+      educationIndex: Math.round(state.education.educationIndex),
+    },
+  };
+}
 
 /**
  * Numeric GameState fields the simulation (and structured AI order effects)
@@ -156,6 +200,33 @@ export const RELATIONSHIPS: SimulationRule[] = [
     effects: { gdpGrowth: 0.1, unemployment: -0.2 },
     description: "Strong business formation is generating economic momentum",
   },
+
+  // Education system feedback
+  {
+    id: "low_education_high_crime",
+    condition: (s) => s.education.educationIndex < 40,
+    effects: {},
+    organisationEffects: { all: 1 },
+    description: "Low education levels are expanding the criminal recruitment pool",
+  },
+  {
+    id: "strong_education_boosts_economy",
+    condition: (s) => s.education.educationIndex > 65,
+    effects: { gdpGrowth: 0.05, fdiFlow: 0.1 },
+    description: "Strong education system is improving workforce quality and attracting investment",
+  },
+  {
+    id: "high_dropout_feeds_informality",
+    condition: (s) => s.education.dropoutRate > 14,
+    effects: { informalEconomy: 0.2, unemployment: 0.1 },
+    description: "High school dropout rate is expanding the informal economy",
+  },
+  {
+    id: "teacher_shortage_degrades_system",
+    condition: (s) => s.education.teacherQualityIndex < 35,
+    effects: {},
+    description: "Teacher quality shortfall is causing education system to deteriorate passively",
+  },
 ];
 
 /** Applies a set of numeric deltas to a (shallow-copied) GameState in place. */
@@ -175,6 +246,62 @@ export function applyNumericEffects<T extends GameState>(
 function driftToward(current: number, baseline: number, rate: number): number {
   const diff = baseline - current;
   return current + diff * rate;
+}
+
+/** Generic min/max clamp — clamp0to100 only covers the 0-100 case. */
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Advances the education subsystem by one turn: recomputes the composite
+ * index, drifts outcome metrics toward what the core indices imply, and
+ * pushes this turn's values onto the lagged history arrays used for
+ * cascade effects elsewhere in runTurnTick.
+ */
+export function updateEducation(state: GameState): EducationState {
+  const edu = { ...state.education };
+
+  // --- Recalculate composite educationIndex ---
+  edu.educationIndex = Math.round(
+    edu.infrastructureIndex * 0.25 +
+      edu.teacherQualityIndex * 0.3 +
+      edu.curriculumIndex * 0.25 +
+      edu.accessIndex * 0.2
+  );
+
+  // --- Outcome metrics drift toward what the indices imply ---
+  // Enrollment responds to infrastructure and access over ~4 turns
+  const impliedEnrollment = 70 + (edu.infrastructureIndex + edu.accessIndex) / 4;
+  edu.primaryEnrollmentRate = driftToward(edu.primaryEnrollmentRate, impliedEnrollment, 0.08);
+  edu.primaryEnrollmentRate = clamp(edu.primaryEnrollmentRate, 60, 99.5);
+
+  // Dropout rate inversely tracks infrastructure and teacher quality
+  const impliedDropout = 25 - (edu.infrastructureIndex + edu.teacherQualityIndex) / 10;
+  edu.dropoutRate = driftToward(edu.dropoutRate, Math.max(2, impliedDropout), 0.06);
+
+  // Secondary completion responds to dropout rate and access — slower
+  const impliedCompletion = 100 - edu.dropoutRate * 2.5;
+  edu.secondaryCompletionRate = driftToward(edu.secondaryCompletionRate, impliedCompletion, 0.04);
+  edu.secondaryCompletionRate = clamp(edu.secondaryCompletionRate, 30, 98);
+
+  // Literacy is very slow-moving — responds to enrollment and completion
+  const impliedLiteracy =
+    60 + edu.primaryEnrollmentRate * 0.25 + edu.secondaryCompletionRate * 0.15;
+  edu.literacyRate = driftToward(edu.literacyRate, impliedLiteracy, 0.01);
+  edu.literacyRate = clamp(edu.literacyRate, 50, 99.9);
+
+  // PISA equivalent responds to curriculum and teacher quality — very slow
+  const impliedPISA = 200 + edu.curriculumIndex * 2 + edu.teacherQualityIndex * 2;
+  edu.pisaEquivalentScore = driftToward(edu.pisaEquivalentScore, impliedPISA, 0.02);
+  edu.pisaEquivalentScore = clamp(edu.pisaEquivalentScore, 200, 600);
+
+  // --- Update lagged history arrays (max 20 entries) ---
+  edu.completionRateHistory = pushCapped(edu.completionRateHistory, edu.secondaryCompletionRate, 20);
+  edu.literacyHistory = pushCapped(edu.literacyHistory, edu.literacyRate, 20);
+  edu.pisaHistory = pushCapped(edu.pisaHistory, edu.pisaEquivalentScore, 20);
+
+  return edu;
 }
 
 /** capacity → threatLevel, the same bands runTurnTick uses every tick. */
@@ -220,6 +347,53 @@ export function runTurnTick(state: GameState): TurnTickResult {
     }
   });
 
+  // Update education simulation
+  newState.education = updateEducation(newState);
+
+  // Education cascades — time-lagged effects on broader simulation
+  // Uses values from N turns ago stored in history arrays
+
+  // 8 turns ago: completion rate → unemployment and informal economy
+  const completionRate8TurnsAgo =
+    newState.education.completionRateHistory[
+      Math.max(0, newState.education.completionRateHistory.length - 8)
+    ];
+  if (completionRate8TurnsAgo > 72) {
+    newState.unemployment = Math.max(0, newState.unemployment - 0.06);
+    newState.informalEconomy = Math.max(0, newState.informalEconomy - 0.04);
+  }
+  if (completionRate8TurnsAgo < 55) {
+    newState.unemployment = Math.min(25, newState.unemployment + 0.04);
+  }
+
+  // 12 turns ago: literacy rate → criminal organisation recruitment capacity
+  const literacyRate12TurnsAgo =
+    newState.education.literacyHistory[
+      Math.max(0, newState.education.literacyHistory.length - 12)
+    ];
+  if (literacyRate12TurnsAgo > 95) {
+    // High literacy reduces cartel recruitment — slow their natural regeneration
+    newState.criminalOrganisations = newState.criminalOrganisations.map((org) => ({
+      ...org,
+      capacity:
+        org.trend === "growing"
+          ? org.capacity // still growing but slightly slower — modelled by not adding the usual regen
+          : Math.max(0, org.capacity - 0.3),
+    }));
+  }
+
+  // 15 turns ago: PISA score → GDP growth (skilled workforce productivity)
+  const pisa15TurnsAgo =
+    newState.education.pisaHistory[Math.max(0, newState.education.pisaHistory.length - 15)];
+  if (pisa15TurnsAgo > 450) {
+    newState.gdpGrowth = Math.min(8, newState.gdpGrowth + 0.04);
+    newState.fdiFlow = Math.min(30, newState.fdiFlow + 0.15);
+  }
+  if (pisa15TurnsAgo > 500) {
+    // Additional boost for high-performing education system
+    newState.businessRegistrations = Math.round(newState.businessRegistrations + 150);
+  }
+
   // Natural drift toward baselines
   newState.inflation = driftToward(newState.inflation, 4.0, 0.15);
   newState.unemployment = driftToward(newState.unemployment, 10.0, 0.1);
@@ -250,7 +424,7 @@ export function runTurnTick(state: GameState): TurnTickResult {
   newState.inflation = Math.max(0, newState.inflation);
   newState.unemployment = Math.max(0, newState.unemployment);
 
-  return { newState, triggeredRules: triggered };
+  return { newState: roundGameStateNumbers(newState), triggeredRules: triggered };
 }
 
 export interface FailureThreshold {

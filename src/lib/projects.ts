@@ -1,3 +1,5 @@
+import type { EducationState } from "@/lib/gameState";
+
 export type ProjectCategory =
   | "Security"
   | "Economic"
@@ -27,6 +29,8 @@ export interface ProjectDefinition {
     durationTurns: number;
     outcome: string;
   };
+  /** Set on education projects — applied to GameState.education on completion. */
+  educationEffect?: Partial<EducationState>;
 }
 
 /** Seed data — copied into GameState.projects by createInitialGameState(). */

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { firstSentence, type TurnRecord } from "@/lib/gameState";
+import { fmtDeltaPct } from "@/lib/format";
 
 export function TurnHistoryCard({ record }: { record: TurnRecord }) {
   const [expanded, setExpanded] = useState(false);
@@ -39,8 +40,7 @@ export function TurnHistoryCard({ record }: { record: TurnRecord }) {
                 : "text-text-muted"
           }`}
         >
-          {record.approvalChange > 0 ? "+" : ""}
-          {record.approvalChange}%
+          {fmtDeltaPct(record.approvalChange)}
         </span>
       </button>
 

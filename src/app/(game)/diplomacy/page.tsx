@@ -10,6 +10,7 @@ import { ActivePressure } from "@/components/diplomacy/ActivePressure";
 import { DiplomaticOpportunities } from "@/components/diplomacy/DiplomaticOpportunities";
 import { DiplomaticCalendar } from "@/components/diplomacy/DiplomaticCalendar";
 import { DiplomaticRecord } from "@/components/diplomacy/DiplomaticRecord";
+import { fmtScore } from "@/lib/format";
 
 export default function DiplomacyPage() {
   const { gameState } = useGame();
@@ -48,7 +49,7 @@ export default function DiplomacyPage() {
             backgroundColor: `${standingColor}1a`,
           }}
         >
-          Global Standing: {gameState.globalStanding}
+          Global Standing: {fmtScore(gameState.globalStanding)}
         </span>
       </div>
 

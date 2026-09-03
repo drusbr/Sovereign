@@ -1,5 +1,6 @@
 import type { GameState } from "@/lib/gameState";
 import { getOverallThreatLevel, THREAT_LEVEL_STYLES } from "@/lib/intelligence";
+import { fmtBRL, fmtInt } from "@/lib/format";
 
 function StatCard({
   label,
@@ -38,12 +39,12 @@ export function ThreatOverview({ gameState }: { gameState: GameState }) {
       />
       <StatCard
         label="Active Criminal Organisations"
-        value={String(activeOrgCount)}
+        value={fmtInt(activeOrgCount)}
       />
-      <StatCard label="ANIP Cases Active" value={String(gameState.anipCases)} />
+      <StatCard label="ANIP Cases Active" value={fmtInt(gameState.anipCases)} />
       <StatCard
         label="Assets Frozen"
-        value={`R$${gameState.anipAssetsFrozen}bn`}
+        value={fmtBRL(gameState.anipAssetsFrozen)}
       />
     </div>
   );

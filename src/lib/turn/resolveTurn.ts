@@ -30,6 +30,7 @@ import {
   checkFailureThresholds,
   deriveThreatLevelFromCapacity,
   describeTriggeredRule,
+  roundGameStateNumbers,
 } from "@/lib/simulationEngine";
 import { runTurnTick } from "@/lib/simulationEngine";
 import type {
@@ -216,6 +217,7 @@ export function resolveTurn(input: ResolveTurnInput): TurnResolutionDraft {
     working.mediaSentimentHistory,
     working.mediaSentiment
   );
+  working.educationHistory = pushCapped(working.educationHistory, working.education.educationIndex);
   working.creditRating = adjustCreditRating(
     working.creditRating,
     working.gdpGrowth,
@@ -385,7 +387,7 @@ export function finalizeTurn(
   const turnRecord = { ...draft.turnRecord, eventFactIds };
 
   return {
-    state: finalState,
+    state: roundGameStateNumbers(finalState),
     actionResolutions: draft.actionResolutions,
     turnRecord,
     generatedEffects: draft.generatedEffects,

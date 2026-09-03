@@ -1,4 +1,5 @@
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
+import { fmtScore } from "@/lib/format";
 
 function capacityColor(value: number): string {
   if (value > 55) return "#10b981";
@@ -31,7 +32,7 @@ function CapacityBar({
     <div>
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-text">{label}</span>
-        <span className="text-text-muted">{clamped}/100</span>
+        <span className="text-text-muted">{fmtScore(clamped)}/100</span>
       </div>
       <div className="mt-1.5">
         <ProgressBar value={clamped} color={capacityColor(clamped)} />

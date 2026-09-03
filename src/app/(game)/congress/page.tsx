@@ -9,6 +9,7 @@ import {
   type CongressAction,
   type LegislativeProceeding,
 } from "@/lib/congress";
+import { fmtPct } from "@/lib/format";
 
 function statusClass(status: LegislativeProceeding["status"]): string {
   if (status === "PASSED") return "border-positive/30 bg-positive/10 text-positive";
@@ -74,7 +75,7 @@ function BillCard({ bill }: { bill: LegislativeProceeding }) {
         </div>
         <div className="text-right text-xs text-text-muted">
           <p>Proposal integrity</p>
-          <p className="mt-1 text-lg font-semibold text-text">{bill.proposalStrength}%</p>
+          <p className="mt-1 text-lg font-semibold text-text">{fmtPct(bill.proposalStrength)}</p>
         </div>
       </div>
 

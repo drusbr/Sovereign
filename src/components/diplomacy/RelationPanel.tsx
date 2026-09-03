@@ -9,6 +9,7 @@ import {
   RELATION_TYPE_LABELS,
   explainInterest,
 } from "@/lib/diplomacy";
+import { fmtScore } from "@/lib/format";
 
 export function RelationPanel({
   relation,
@@ -86,7 +87,7 @@ export function RelationPanel({
                   {statusStyle.label}
                 </span>
                 <span className="text-sm font-semibold text-text">
-                  {displayed.relationshipScore}/100
+                  {fmtScore(displayed.relationshipScore)}/100
                 </span>
               </div>
 

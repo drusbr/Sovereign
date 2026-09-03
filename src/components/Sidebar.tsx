@@ -15,9 +15,12 @@ import {
   Settings,
   BookOpen,
   Landmark,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { useGame } from "@/context/GameContext";
+import { useAuth } from "@/context/AuthContext";
+import { fmtPct } from "@/lib/format";
 
 interface NavItem {
   href: string;
@@ -48,9 +51,11 @@ function approvalColor(approval: number) {
 export function Sidebar() {
   const pathname = usePathname();
   const { gameState, saveStatus } = useGame();
+  const { user } = useAuth();
   const urgentEventCount = gameState.worldEvents.filter(
     (e) => e.requiresResponse && e.status === "active"
   ).length;
+  const mainMenuHref = user ? "/campaigns" : "/";
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border bg-panel">
@@ -78,9 +83,20 @@ export function Sidebar() {
               gameState.approval
             )}`}
           >
-            {gameState.approval}%
+            {fmtPct(gameState.approval)}
           </span>
         </div>
+      </div>
+      <div className="border-t border-border" />
+
+      <div className="px-2 py-2">
+        <Link
+          href={mainMenuHref}
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-text-muted transition-colors hover:bg-panel-2/60 hover:text-text"
+        >
+          <LogOut size={16} className="text-text-muted" />
+          Main Menu
+        </Link>
       </div>
       <div className="border-t border-border" />
 

@@ -14,10 +14,17 @@ import {
 import { WorldDriftLog } from "@/components/dashboard/WorldDriftLog";
 import { WorldEventsWidget } from "@/components/dashboard/WorldEventsWidget";
 import { GoverningCapacity } from "@/components/dashboard/GoverningCapacity";
+import { fmtDelta, fmtInt, fmtPct, fmtScore } from "@/lib/format";
 
 function approvalColor(value: number) {
   if (value >= 50) return "#10b981";
   if (value >= 30) return "#f59e0b";
+  return "#ef4444";
+}
+
+function educationColor(value: number) {
+  if (value > 65) return "#10b981";
+  if (value > 45) return "#f59e0b";
   return "#ef4444";
 }
 
@@ -82,7 +89,7 @@ export default function DashboardPage() {
                   color={approvalColor(gameState.approval)}
                 />
                 <span className="absolute text-xl font-bold text-text">
-                  {gameState.approval}%
+                  {fmtPct(gameState.approval)}
                 </span>
               </div>
               <div className="flex flex-col gap-1">
@@ -90,8 +97,7 @@ export default function DashboardPage() {
                   className={`flex items-center gap-1 text-sm font-medium ${approvalTrend.color}`}
                 >
                   <approvalTrend.Icon size={14} />
-                  {approvalChange > 0 ? "+" : ""}
-                  {lastResult ? approvalChange : 0} last turn
+                  {fmtDelta(lastResult ? approvalChange : 0)} last turn
                 </span>
                 <span className="text-xs text-text-muted">
                   National approval index
@@ -103,7 +109,7 @@ export default function DashboardPage() {
           <Panel title="Security Index">
             <div className="flex items-center justify-between">
               <span className="text-2xl font-bold text-text">
-                {gameState.securityIndex}
+                {fmtScore(gameState.securityIndex)}
                 <span className="text-sm font-normal text-text-muted">
                   /100
                 </span>
@@ -113,8 +119,7 @@ export default function DashboardPage() {
                   className={`flex items-center gap-1 text-xs font-semibold ${securityTrend.color}`}
                 >
                   <securityTrend.Icon size={12} />
-                  {securityChange > 0 ? "+" : ""}
-                  {securityChange} last turn
+                  {fmtDelta(securityChange)} last turn
                 </span>
               )}
             </div>
@@ -127,7 +132,7 @@ export default function DashboardPage() {
             <Panel title="GDP Growth">
               <div className="flex items-end justify-between">
                 <span className="text-2xl font-bold text-text">
-                  {gameState.gdpGrowth}%
+                  {fmtPct(gameState.gdpGrowth)}
                 </span>
                 <Sparkline data={gameState.gdpHistory} color="#3b82f6" />
               </div>
@@ -139,7 +144,7 @@ export default function DashboardPage() {
                   gameState.inflation > 5 ? "text-danger" : "text-text"
                 }`}
               >
-                {gameState.inflation}%
+                {fmtPct(gameState.inflation)}
               </span>
               <p className="mt-1 text-xs text-text-muted">
                 {gameState.inflation > 5 ? "Above target" : "Within target"}
@@ -149,11 +154,35 @@ export default function DashboardPage() {
 
           <Panel title="Active Projects">
             <span className="text-2xl font-bold text-text">
-              {gameState.activeProjects}
+              {fmtInt(gameState.activeProjects)}
             </span>
             <p className="mt-1 text-xs text-text-muted">
               Ongoing federal initiatives
             </p>
+          </Panel>
+
+          <Panel title="Education Index">
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-bold text-text">
+                {fmtScore(gameState.education.educationIndex)}
+              </span>
+              <span className="mb-0.5 text-sm font-normal text-text-muted">
+                /100
+              </span>
+            </div>
+            <div className="mt-2">
+              <ProgressBar
+                value={gameState.education.educationIndex}
+                color={educationColor(gameState.education.educationIndex)}
+              />
+            </div>
+            <p className="mt-2 text-xs text-text-muted">
+              Literacy {fmtPct(gameState.education.literacyRate)} · Completion{" "}
+              {fmtPct(gameState.education.secondaryCompletionRate)}
+            </p>
+            <div className="mt-2">
+              <Sparkline data={gameState.educationHistory} color="#3b82f6" />
+            </div>
           </Panel>
         </div>
 

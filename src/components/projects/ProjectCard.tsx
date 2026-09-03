@@ -5,6 +5,7 @@ import {
   type ProjectDefinition,
   type ProjectRuntimeInfo,
 } from "@/lib/projects";
+import { fmtPct } from "@/lib/format";
 
 export function ProjectCard({
   project,
@@ -66,7 +67,7 @@ export function ProjectCard({
         <div className="mt-3">
           <div className="mb-1 flex items-center justify-between text-[11px] text-text-muted">
             <span>{isNotStarted ? "Not yet underway" : "Progress"}</span>
-            <span>{info.progress}%</span>
+            <span>{fmtPct(info.progress)}</span>
           </div>
           <ProgressBar
             value={info.progress}

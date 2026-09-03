@@ -6,6 +6,7 @@ import {
   informalEconomyColor,
   unemploymentColor,
 } from "@/lib/economy";
+import { fmtBRL, fmtDelta, fmtPct } from "@/lib/format";
 
 function trendOf(delta: number): { Icon: LucideIcon; className: string } {
   if (delta > 0.05) return { Icon: ArrowUp, className: "text-positive" };
@@ -38,8 +39,7 @@ function StatCard({
         {trend && (
           <span className={`flex items-center gap-0.5 text-xs font-semibold ${trend.className}`}>
             <trend.Icon size={12} />
-            {delta! > 0 ? "+" : ""}
-            {delta!.toFixed(1)}
+            {fmtDelta(delta)}
           </span>
         )}
       </div>
@@ -58,37 +58,37 @@ export function KeyIndicators({ gameState }: { gameState: GameState }) {
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
       <StatCard
         label="GDP Growth"
-        value={`${gameState.gdpGrowth}%`}
+        value={fmtPct(gameState.gdpGrowth)}
         color={gdpGrowthColor(gameState.gdpGrowth)}
         delta={gdpDelta}
       />
       <StatCard
         label="Inflation"
-        value={`${gameState.inflation}%`}
+        value={fmtPct(gameState.inflation)}
         color={inflationColor(gameState.inflation)}
         subtitle={gameState.inflation > 5 ? "Above target" : "Within target"}
       />
       <StatCard
         label="Unemployment"
-        value={`${gameState.unemployment}%`}
+        value={fmtPct(gameState.unemployment)}
         color={unemploymentColor(gameState.unemployment)}
       />
       <StatCard
         label="Trade Balance"
-        value={`R$${Math.abs(gameState.tradeBalance)}bn`}
+        value={fmtBRL(Math.abs(gameState.tradeBalance))}
         color={gameState.tradeBalance >= 0 ? "#10b981" : "#ef4444"}
         subtitle={gameState.tradeBalance >= 0 ? "Surplus" : "Deficit"}
       />
       <StatCard
         label="FDI Flow"
-        value={`R$${gameState.fdiFlow}bn`}
+        value={fmtBRL(gameState.fdiFlow)}
         color="#3b82f6"
         subtitle="this turn"
         delta={fdiDelta}
       />
       <StatCard
         label="Informal Economy"
-        value={`${gameState.informalEconomy}%`}
+        value={fmtPct(gameState.informalEconomy)}
         color={informalEconomyColor(gameState.informalEconomy)}
         subtitle="of workforce off-books"
       />

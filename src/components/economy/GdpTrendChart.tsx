@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { fmtPct } from "@/lib/format";
 
 const LABELS = ["T-6", "T-5", "T-4", "T-3", "T-2", "T-1", "Now"];
 
@@ -41,7 +42,7 @@ export function GdpTrendChart({ data }: { data: number[] }) {
             axisLine={false}
             tickLine={false}
             width={38}
-            tickFormatter={(v) => `${v}%`}
+            tickFormatter={(v: number) => fmtPct(v)}
           />
           <Tooltip
             contentStyle={{
@@ -51,7 +52,7 @@ export function GdpTrendChart({ data }: { data: number[] }) {
               fontSize: 12,
             }}
             labelStyle={{ color: "#f1f5f9" }}
-            formatter={(value) => [`${value}%`, "GDP Growth"]}
+            formatter={(value) => [fmtPct(Number(value)), "GDP Growth"]}
           />
           <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
           <ReferenceLine

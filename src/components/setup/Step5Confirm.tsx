@@ -8,17 +8,18 @@ import { getAlignment, getPoliticalBackground, getPriority } from "@/lib/setupDa
 import { Avatar } from "@/components/setup/Avatar";
 import type { SetupState } from "@/lib/setupWizard";
 import { buildCampaignGameState } from "@/lib/setupWizard";
+import { fmt, fmtDelta, fmtPct } from "@/lib/format";
 
 function StatDelta({
   label,
   baseline,
   value,
-  suffix = "",
+  isPercent = false,
 }: {
   label: string;
   baseline: number;
   value: number;
-  suffix?: string;
+  isPercent?: boolean;
 }) {
   const delta = Math.round((value - baseline) * 10) / 10;
   const Icon = delta > 0 ? ArrowUp : delta < 0 ? ArrowDown : Minus;
@@ -32,14 +33,12 @@ function StatDelta({
       </p>
       <div className="mt-1 flex items-baseline gap-2">
         <span className="text-xl font-bold text-text">
-          {value}
-          {suffix}
+          {isPercent ? fmtPct(value) : fmt(value)}
         </span>
         {delta !== 0 && (
           <span className={`flex items-center gap-0.5 text-xs font-semibold ${color}`}>
             <Icon size={12} />
-            {delta > 0 ? "+" : ""}
-            {delta}
+            {fmtDelta(delta)}
           </span>
         )}
       </div>
@@ -140,7 +139,7 @@ export function Step5Confirm({ setup }: { setup: SetupState }) {
           Starting Conditions
         </h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatDelta label="Approval" baseline={baseline.approval} value={preview.approval} suffix="%" />
+          <StatDelta label="Approval" baseline={baseline.approval} value={preview.approval} isPercent />
           <StatDelta
             label="Security Index"
             baseline={baseline.securityIndex}
@@ -150,13 +149,13 @@ export function Step5Confirm({ setup }: { setup: SetupState }) {
             label="GDP Growth"
             baseline={baseline.gdpGrowth}
             value={preview.gdpGrowth}
-            suffix="%"
+            isPercent
           />
           <StatDelta
             label="Congressional Support"
             baseline={baseline.congressionalSupport}
             value={preview.congressionalSupport}
-            suffix="%"
+            isPercent
           />
         </div>
       </div>

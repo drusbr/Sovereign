@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { fmtBRL } from "@/lib/format";
 
 const LABELS = ["T-6", "T-5", "T-4", "T-3", "T-2", "T-1", "Now"];
 
@@ -43,7 +44,7 @@ export function FdiTrendChart({ data }: { data: number[] }) {
               fontSize: 12,
             }}
             labelStyle={{ color: "#f1f5f9" }}
-            formatter={(value) => [`R$${value}bn`, "FDI"]}
+            formatter={(value) => [fmtBRL(Number(value)), "FDI"]}
           />
           <Line
             type="monotone"

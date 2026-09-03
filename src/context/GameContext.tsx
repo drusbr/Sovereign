@@ -34,6 +34,7 @@ import {
 import { getAdvisorById, getAdvisorsFromState } from "@/lib/advisors";
 import {
   applyNumericEffects,
+  roundGameStateNumbers,
   type FailureThreshold,
 } from "@/lib/simulationEngine";
 import type {
@@ -470,15 +471,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
         // Some resolved events seed a follow-up ("the world has memory").
         const chainedEvent = getChainedEvent(resolvedEvent, effected, effected.turn);
 
-        setGameState({
-          ...effected,
-          actionPoints: Math.max(0, effected.actionPoints - option.requiresActionPoints),
-          worldEvents: [
-            ...effected.worldEvents.filter((e) => e.id !== eventId),
-            ...(chainedEvent ? [chainedEvent] : []),
-          ],
-          resolvedWorldEvents: [...effected.resolvedWorldEvents, resolvedEvent].slice(-60),
-        });
+        setGameState(
+          roundGameStateNumbers({
+            ...effected,
+            actionPoints: Math.max(0, effected.actionPoints - option.requiresActionPoints),
+            worldEvents: [
+              ...effected.worldEvents.filter((e) => e.id !== eventId),
+              ...(chainedEvent ? [chainedEvent] : []),
+            ],
+            resolvedWorldEvents: [...effected.resolvedWorldEvents, resolvedEvent].slice(-60),
+          })
+        );
 
         return narrative;
       } catch (err) {
@@ -544,11 +547,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           securityIndexChange: option.effects.securityIndex ?? 0,
         };
 
-        const finalState: GameState = {
+        const finalState: GameState = roundGameStateNumbers({
           ...effected,
           situation: firstSentence(data.narrative) || effected.situation,
           history: pushTurnRecord(effected.history, record),
-        };
+        });
 
         setGameState(finalState);
         setActiveEvent(null);
