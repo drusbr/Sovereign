@@ -4,8 +4,10 @@ import { SectionHeader } from "@/components/SectionHeader";
 
 export function OperationsTable({
   operations,
+  onCancel,
 }: {
   operations: ActiveOperation[];
+  onCancel?: (id: string) => void;
 }) {
   return (
     <div>
@@ -25,6 +27,9 @@ export function OperationsTable({
                 <th className="px-4 py-2.5 font-semibold">Lead Agency</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
                 <th className="px-4 py-2.5 font-semibold">Started</th>
+                <th className="px-4 py-2.5 font-semibold">Progress / Cost</th>
+                <th className="px-4 py-2.5 font-semibold">Latest Results</th>
+                <th className="px-4 py-2.5 font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -64,6 +69,21 @@ export function OperationsTable({
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-text-muted">
                       T{op.startTurn}
+                    </td>
+                    <td className="min-w-40 px-4 py-3 text-xs text-text-muted">
+                      <p>{op.lifecycle.progress.toFixed(0)}% · {op.phase}</p>
+                      <p>R${op.lifecycle.spent.toFixed(2)}bn / R${op.lifecycle.totalBudget.toFixed(2)}bn</p>
+                      <p>{op.lifecycle.elapsedTurns}/{op.lifecycle.plannedDurationTurns} turns</p>
+                    </td>
+                    <td className="min-w-48 px-4 py-3 text-xs text-text-muted">
+                      <p>{op.thisTurnResults.arrests} arrests · {op.thisTurnResults.facilitiesDisrupted} facilities</p>
+                      <p>R${op.thisTurnResults.assetsSeized.toFixed(3)}bn seized · capacity -{op.thisTurnResults.criminalCapacityReduction}</p>
+                      <p>Casualties: {op.thisTurnResults.governmentCasualties} federal / {op.thisTurnResults.civilianCasualties} civilian</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {onCancel && !["COMPLETED", "FAILED", "CANCELLED"].includes(op.lifecycle.status) && (
+                        <button type="button" onClick={() => onCancel(op.id)} className="rounded border border-danger/30 px-2 py-1 text-[10px] font-semibold text-danger hover:bg-danger/10">Cancel · 1 AP</button>
+                      )}
                     </td>
                   </tr>
                 );

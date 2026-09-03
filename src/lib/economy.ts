@@ -23,13 +23,15 @@ const CREDIT_RATING_ORDER: CreditRating[] = [
 export function adjustCreditRating(
   rating: CreditRating,
   gdpGrowth: number,
-  inflation: number
+  inflation: number,
+  debtToGDP?: number
 ): CreditRating {
   let idx = CREDIT_RATING_ORDER.indexOf(rating);
 
   if (gdpGrowth > 4.0) idx = Math.min(idx + 1, CREDIT_RATING_ORDER.length - 1);
   if (gdpGrowth < 0) idx = Math.max(idx - 1, 0);
   if (inflation > 8) idx = Math.max(idx - 1, 0);
+  if (debtToGDP !== undefined && debtToGDP > 105) idx = Math.max(idx - 1, 0);
 
   return CREDIT_RATING_ORDER[idx];
 }

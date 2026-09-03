@@ -34,9 +34,15 @@ export default function EventsPage() {
     return gameState.worldEvents.filter((e) => e.type === filter);
   }, [gameState.worldEvents, filter]);
 
-  const attentionEvents = filteredEvents.filter(requiresAttention);
-  const ongoingEvents = filteredEvents.filter(isOngoingSituation);
-  const feedEvents = filteredEvents.filter(isWorldFeedItem);
+  const attentionEvents = filteredEvents.filter((event) =>
+    requiresAttention(event, gameState.turn)
+  );
+  const ongoingEvents = filteredEvents.filter((event) =>
+    isOngoingSituation(event, gameState.turn)
+  );
+  const feedEvents = filteredEvents.filter((event) =>
+    isWorldFeedItem(event, gameState.turn)
+  );
 
   const isEmpty =
     attentionEvents.length === 0 &&

@@ -1,0 +1,129 @@
+import type { EventFact } from "@/lib/eventFacts";
+import type { StoryCandidate, StoryFamily } from "@/lib/storyAggregator";
+
+export type NarrativeStyle = "PRESIDENTIAL_BRIEFING" | "GENERAL_NEWS" | "ECONOMIC_NEWS" | "SECURITY_INTELLIGENCE" | "NOTIFICATION";
+export interface RenderedEvent { headline: string; body: string; templateId: string; style: NarrativeStyle; }
+
+const UUID_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+function hasUuid(text: string): boolean { return new RegExp(UUID_SOURCE, "i").test(text); }
+function hash(text: string): number { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function money(value: unknown): string { return `R$${Number(value ?? 0).toLocaleString("en-US", { maximumFractionDigits: 3 })}bn`; }
+function metric(event: EventFact, key: string): number { return Number(event.metrics?.[key] ?? 0); }
+
+export function playerFacingEntityName(event: EventFact): string {
+  const raw = event.subjects[0]?.name?.trim() ?? "";
+  if (raw && !hasUuid(raw)) return raw;
+  if (event.source === "OPERATION") return `Federal Security Operation${event.geography?.[0] ? ` in ${event.geography[0]}` : ""}`;
+  if (event.source === "PROJECT") return "Federal Government Programme";
+  if (event.source === "CONGRESS") return "Government Legislation";
+  return "Federal authorities";
+}
+
+function choose(candidate: StoryCandidate, style: NarrativeStyle, recent: string[], families: string[]): number {
+  const start = hash(`${candidate.id}:${candidate.angle}:${style}`) % families.length;
+  for (let i = 0; i < families.length; i++) {
+    const index = (start + i) % families.length;
+    if (!recent.includes(`${candidate.family}:${candidate.angle}:${style}:${families[index]}`)) return index;
+  }
+  return start;
+}
+
+function operationCopy(candidate: StoryCandidate, variant: number) {
+  const launch = candidate.facts.find((fact) => fact.type === "OPERATION_LAUNCHED");
+  const result = candidate.facts.find((fact) => fact.type === "OPERATION_BREAKTHROUGH" || fact.type === "OPERATION_DEVELOPMENT");
+  const casualty = candidate.facts.find((fact) => fact.type === "OPERATION_CASUALTIES");
+  const fact = result ?? casualty ?? launch ?? candidate.primaryFact;
+  const name = playerFacingEntityName(fact);
+  const governmentCasualties = casualty ? metric(casualty, "governmentCasualties") : metric(fact, "governmentCasualties");
+  const civilianCasualties = casualty ? metric(casualty, "civilianCasualties") : metric(fact, "civilianCasualties");
+  const headline = casualty
+    ? [ `${name} Opens With Casualties`, "Federal Operation Reports Casualties During Opening Phase", `${name}: Personnel Wounded as Security Deployment Proceeds` ][variant]
+    : result ? [ `${name} Disrupts Criminal Networks`, `Federal Authorities Report Gains in ${name}`, `${name} Intensifies Pressure on Organised Crime` ][variant]
+      : [ `${name} Begins`, `Federal Security Deployment Opens in ${fact.geography?.[0] ?? "Brazil"}`, `Government Launches ${name}` ][variant];
+  const sentences: string[] = [];
+  if (launch) sentences.push(`${name} began operations in ${launch.geography?.[0] ?? "Brazil"} under an authorised budget of ${money(launch.metrics?.budget)}.`);
+  if (result) sentences.push(`Authorities reported ${metric(result, "arrests")} arrests, including ${metric(result, "highValueArrests")} high-value arrests, while ${metric(result, "facilitiesDisrupted")} facilities were disrupted and ${money(result.metrics?.assetsSeized)} in assets was seized.`);
+  if (result) sentences.push(`The targeted organisation's operational capacity fell by ${metric(result, "criminalCapacityReduction")} points. Civilian casualties: ${civilianCasualties}.`);
+  if (casualty) sentences.push(`The operation recorded ${governmentCasualties} government casualties and ${civilianCasualties} civilian casualties during the same phase.`);
+  return { headline, body: sentences.join(" ") || `${name} remains active.` };
+}
+
+function projectDomain(event: EventFact): "education" | "health" | "infrastructure" | "security" | "government" {
+  const text = `${playerFacingEntityName(event)} ${event.category}`.toLowerCase();
+  if (/school|education|escola/.test(text)) return "education";
+  if (/hospital|health|sus/.test(text)) return "health";
+  if (/rail|road|port|nuclear|energy|infrastructure|construction/.test(text)) return "infrastructure";
+  if (/security|battalion|police/.test(text)) return "security";
+  return "government";
+}
+
+function projectCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact;
+  const name = playerFacingEntityName(event);
+  const domain = projectDomain(event);
+  const noun = `${domain} programme`;
+  const m = event.metrics ?? {};
+  if (event.type === "PROJECT_FAILED") return { headline: [`Funding Shortfall Ends ${name}`, `${name} Fails After Financing Breakdown`, `Government Terminates ${name}`][variant], body: `${name} has failed after funding interruption. The ${noun} carried an authorised budget of ${money(m.budget)}, of which ${money(m.spent)} was spent before delivery stopped at ${m.progress}%. The termination is expected to draw scrutiny over the undelivered commitment.` };
+  if (event.type === "PROJECT_STALLED") return { headline: [`Funding Constraints Stall ${name}`, `${name} Put on Hold`, `Delivery Pauses on ${name}`][variant], body: `${name} has been suspended with delivery at ${m.progress}%. Expenditure stands at ${money(m.spent)} against an authorised budget of ${money(m.budget)} while officials review financing.` };
+  if (event.type === "PROJECT_COMPLETED") return { headline: [`${name} Enters Service`, `Government Completes ${name}`, `${domain === "infrastructure" ? "Construction" : "Delivery"} Concludes on ${name}`][variant], body: `${name} has completed implementation. Final expenditure was ${money(m.spent)} against an authorised budget of ${money(m.budget)}, bringing the government's ${domain} initiative into its operational phase.` };
+  const headlines: Record<typeof domain, string[]> = {
+    education: [`${name} Moves Into Next Delivery Phase`, "Education Pilot Reaches Major Implementation Stage", `${name} Expands Delivery`],
+    health: [`${name} Expands Health-Service Delivery`, "Health Programme Clears Implementation Milestone", `${name} Moves Into Next Phase`],
+    infrastructure: [`Construction Advances on ${name}`, `${name} Clears Major Delivery Stage`, `Works Progress on ${name}`],
+    security: [`${name} Advances Training and Deployment`, "Security Programme Reaches Implementation Milestone", `${name} Moves Closer to Operational Readiness`],
+    government: [`${name} Reaches Major Delivery Stage`, `Implementation Advances on ${name}`, `${name} Moves Into Next Phase`],
+  };
+  return { headline: headlines[domain][variant], body: `The ${noun} has reached ${m.milestone}% delivery. Expenditure to date is ${money(m.spent)} against an authorised budget of ${money(m.budget)}.` };
+}
+
+function congressCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact; const name = playerFacingEntityName(event);
+  const passed = event.type === "LEGISLATION_PASSED"; const failed = event.type === "LEGISLATION_FAILED";
+  const headline = passed ? [`Congress Clears ${name}`, `Senate Completes Passage of ${name}`, `${name} Wins Bicameral Approval`][variant]
+    : failed ? [`${name} Defeated in Congress`, `Congress Rejects ${name}`, `${name} Falls Short of Bicameral Approval`][variant]
+      : [`${name} Enters Congress`, `Government Introduces ${name}`, `Congress Opens Debate on ${name}`][variant];
+  const fiscal = candidate.facts.find((fact) => fact.type === "MAJOR_EXPENDITURE");
+  const fiscalContext = fiscal ? ` The enacted package adds ${money(Number(fiscal.metrics?.annualExpenditureImpact ?? fiscal.metrics?.expenditure ?? 0))} to annual expenditure${Number(fiscal.metrics?.annualRevenueImpact ?? 0) > 0 ? ` and ${money(fiscal.metrics?.annualRevenueImpact)} to annual revenue` : ""}. Its net current-turn cash effect is ${money(Math.abs(Number(fiscal.metrics?.currentTurnCashImpact ?? 0)))}.` : "";
+  const body = passed || failed ? `${name} ${passed ? "passed" : "failed to pass"} both chambers. The Chamber recorded ${metric(event, "chamberYes")} votes in favour and the Senate recorded ${metric(event, "senateYes")}.${passed ? fiscalContext : ""}` : `${name} has been introduced for consideration by the Chamber of Deputies and Federal Senate.`;
+  return { headline, body };
+}
+
+function fiscalCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact;
+  if (event.type === "MAJOR_EXPENDITURE") return { headline: [`${money(event.metrics?.expenditure)} Federal Spending Commitment Enters Accounts`, `New Federal Measures Add ${money(event.metrics?.expenditure)} in Expenditure`, "Treasury Records Major New Expenditure"][variant], body: `The federal accounts recorded ${money(event.metrics?.expenditure)} in new expenditure across ${event.metrics?.transactions} transaction${Number(event.metrics?.transactions) === 1 ? "" : "s"}. The outlays will feed through to the government's financing requirement and debt position.` };
+  return { headline: [`Debt Ratio Crosses ${event.metrics?.threshold}%`, "Federal Debt Moves Through Key Threshold", "Treasury Position Shifts as Debt Ratio Changes"][variant], body: `Federal debt-to-GDP moved from ${event.previousValues?.debtToGDP}% to ${event.currentValues?.debtToGDP}%, crossing the ${event.metrics?.threshold}% threshold.` };
+}
+
+function genericCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact; const name = playerFacingEntityName(event); const label = event.type.replaceAll("_", " ").toLowerCase();
+  const headline = [`${name}: ${label}`, `${name} Marks New National Development`, `Government Faces ${label}`][variant];
+  const previous = event.previousValues ? Object.entries(event.previousValues).map(([key, value]) => `${key} ${value}`).join(", ") : "";
+  const current = event.currentValues ? Object.entries(event.currentValues).map(([key, value]) => `${key} ${value}`).join(", ") : "";
+  return { headline, body: `${name} recorded ${label}.${previous || current ? ` The previous position was ${previous || "not reported"}; the current position is ${current || "not reported"}.` : ""}` };
+}
+
+function copyFor(candidate: StoryCandidate, variant: number) {
+  if (candidate.family === "OPERATION") return operationCopy(candidate, variant);
+  if (candidate.family === "PROJECT") return projectCopy(candidate, variant);
+  if (candidate.family === "CONGRESS") return congressCopy(candidate, variant);
+  if (candidate.family === "FISCAL") return fiscalCopy(candidate, variant);
+  return genericCopy(candidate, variant);
+}
+function templateFamilies(family: StoryFamily): string[] { return family === "PROJECT" ? ["delivery-led", "institution-led", "programme-led"] : family === "OPERATION" ? ["operation-led", "authority-led", "impact-led"] : family === "CONGRESS" ? ["institution-led", "measure-led", "outcome-led"] : ["subject-led", "change-led", "consequence-led"]; }
+
+export function renderStory(candidate: StoryCandidate, style: NarrativeStyle, context: { recentTemplateIds?: string[] } = {}): RenderedEvent {
+  const families = templateFamilies(candidate.family); const variant = choose(candidate, style, context.recentTemplateIds ?? [], families);
+  const templateId = `${candidate.family}:${candidate.angle}:${style}:${families[variant]}`; const copy = copyFor(candidate, variant);
+  const headline = style === "PRESIDENTIAL_BRIEFING" ? `${copy.headline} — Presidential Briefing` : style === "SECURITY_INTELLIGENCE" ? `SECURITY ASSESSMENT: ${copy.headline}` : copy.headline;
+  const body = style === "PRESIDENTIAL_BRIEFING" ? `${copy.body} ${candidate.primaryFact.surfacedToPresident ? "This development warrants presidential attention." : "No immediate presidential decision is required."}` : style === "ECONOMIC_NEWS" ? `${copy.body} Markets and fiscal authorities will assess the effect on the financing outlook.` : copy.body;
+  return { headline, body, templateId, style };
+}
+
+export function renderEvent(event: EventFact, style: NarrativeStyle, context: { recentTemplateIds?: string[] } = {}): RenderedEvent {
+  const family: StoryFamily = event.source === "CONGRESS" ? "CONGRESS" : event.source === "FISCAL" ? "FISCAL" : event.source === "PROJECT" ? "PROJECT" : event.source === "OPERATION" || event.source === "SECURITY" ? "OPERATION" : event.source === "ECONOMY" ? "ECONOMY" : event.source === "WORLD" ? "WORLD" : "GENERAL";
+  return renderStory({ id: `story-${event.id}`, turn: event.turn, family, angle: event.type.toLowerCase(), primaryFact: event, facts: [event], storyWorthiness: 100 }, style, context);
+}
+
+export function buildEventEnrichmentPrompt(event: EventFact, baseline: RenderedEvent): string {
+  return `Improve the prose of this report without changing its factual content.\n\nAUTHORITATIVE EVENT FACT:\n${JSON.stringify(event)}\n\nPROCEDURAL BASELINE:\nHeadline: ${baseline.headline}\nBody: ${baseline.body}\n\nYou may improve framing and describe plausible reaction. Do not invent or change outcomes, numbers, status, casualties, legislation, fiscal effects, participating actors, or authoritative game state. Return JSON only: {"headline":"...","body":"..."}`;
+}

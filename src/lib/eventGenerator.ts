@@ -6,6 +6,9 @@ import type {
   WorldEvent,
 } from "@/lib/gameState";
 
+/** Turn on which an event id becomes eligible to fire again. */
+type CooldownUpdates = Record<string, number>;
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -32,6 +35,8 @@ interface DeterministicEventDef {
   condition: (s: GameState) => boolean;
   probability: number;
   durationTurns: number;
+  /** Turns before this event is eligible to fire again after it fires. */
+  cooldownTurns: number;
   eventBuilder: (state: GameState, turn: number) => EventBuilderOutput;
 }
 
@@ -62,6 +67,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.unemployment > 12 && s.approval < 40,
     probability: 0.7,
     durationTurns: 3,
+    cooldownTurns: 5,
     eventBuilder: () => ({
       type: "domestic",
       category: "social_unrest",
@@ -110,6 +116,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.civilLiberties < 55,
     probability: 0.3,
     durationTurns: 3,
+    cooldownTurns: 4,
     eventBuilder: () => ({
       type: "domestic",
       category: "environmental",
@@ -158,6 +165,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.securityIndex < 50 && s.civilLiberties < 65,
     probability: 0.4,
     durationTurns: 2,
+    cooldownTurns: 6,
     eventBuilder: () => ({
       type: "domestic",
       category: "public_incident",
@@ -206,6 +214,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: () => true,
     probability: 0.15,
     durationTurns: 4,
+    cooldownTurns: 8,
     eventBuilder: () => ({
       type: "domestic",
       category: "natural_disaster",
@@ -254,6 +263,8 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.publicInvestment < 2.5,
     probability: 0.35,
     durationTurns: 3,
+    // Not one of the given category examples — treated as a social-severity crisis.
+    cooldownTurns: 5,
     eventBuilder: () => ({
       type: "domestic",
       category: "health_crisis",
@@ -302,6 +313,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.congressionalSupport > 70,
     probability: 0.25,
     durationTurns: 3,
+    cooldownTurns: 4,
     eventBuilder: () => ({
       type: "domestic",
       category: "political_event",
@@ -350,6 +362,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.inflation > 8,
     probability: 0.3,
     durationTurns: 2,
+    cooldownTurns: 6,
     eventBuilder: () => ({
       type: "domestic",
       category: "economic_shock",
@@ -398,6 +411,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: () => true,
     probability: 0.12,
     durationTurns: 3,
+    cooldownTurns: 4,
     eventBuilder: () => ({
       type: "domestic",
       category: "political_event",
@@ -446,6 +460,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: () => true,
     probability: 0.1,
     durationTurns: 2,
+    cooldownTurns: 6,
     eventBuilder: () => ({
       type: "domestic",
       category: "public_incident",
@@ -494,6 +509,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
     condition: (s) => s.approval < 45 && s.congressionalSupport < 50,
     probability: 0.3,
     durationTurns: 2,
+    cooldownTurns: 5,
     eventBuilder: () => ({
       type: "domestic",
       category: "social_unrest",
@@ -544,6 +560,7 @@ export const DETERMINISTIC_EVENTS: DeterministicEventDef[] = [
 // ---------------------------------------------------------------------------
 
 export interface RandomEventSeed {
+  id: string;
   title: string;
   type: "domestic" | "international";
   category: DomesticCategory | InternationalCategory;
@@ -551,33 +568,178 @@ export interface RandomEventSeed {
   probability: number;
 }
 
+function randomEventSeed(
+  seed: Omit<RandomEventSeed, "id">
+): RandomEventSeed {
+  return { id: slugify(seed.title), ...seed };
+}
+
 export const RANDOM_EVENTS: RandomEventSeed[] = [
   // Domestic
-  { title: "High-Profile Corruption Arrest", type: "domestic", category: "political_event", severity: "moderate", probability: 0.15 },
-  { title: "Major Industrial Accident", type: "domestic", category: "public_incident", severity: "high", probability: 0.08 },
-  { title: "Celebrity Death Dominates News", type: "domestic", category: "public_incident", severity: "informational", probability: 0.1 },
-  { title: "Tech Startup IPO Success", type: "domestic", category: "economic_shock", severity: "informational", probability: 0.12 },
+  randomEventSeed({ title: "High-Profile Corruption Arrest", type: "domestic", category: "political_event", severity: "moderate", probability: 0.15 }),
+  randomEventSeed({ title: "Major Industrial Accident", type: "domestic", category: "public_incident", severity: "high", probability: 0.08 }),
+  randomEventSeed({ title: "Celebrity Death Dominates News", type: "domestic", category: "public_incident", severity: "informational", probability: 0.1 }),
+  randomEventSeed({ title: "Tech Startup IPO Success", type: "domestic", category: "economic_shock", severity: "informational", probability: 0.12 }),
   // International
-  { title: "US Presidential Statement on Latin America", type: "international", category: "diplomatic_incident", severity: "moderate", probability: 0.15 },
-  { title: "Argentine Economic Crisis Deepens", type: "international", category: "economic_shock", severity: "high", probability: 0.1 },
-  { title: "Global Oil Price Spike", type: "international", category: "economic_shock", severity: "high", probability: 0.08 },
-  { title: "Bolivian Political Instability", type: "international", category: "geopolitical_shift", severity: "moderate", probability: 0.1 },
-  { title: "Chinese Trade Delegation Visit", type: "international", category: "trade_development", severity: "moderate", probability: 0.15 },
-  { title: "European Election Results", type: "international", category: "foreign_election", severity: "informational", probability: 0.1 },
-  { title: "UN Climate Summit Announcement", type: "international", category: "diplomatic_incident", severity: "moderate", probability: 0.08 },
+  randomEventSeed({ title: "US Presidential Statement on Latin America", type: "international", category: "diplomatic_incident", severity: "moderate", probability: 0.15 }),
+  randomEventSeed({ title: "Argentine Economic Crisis Deepens", type: "international", category: "economic_shock", severity: "high", probability: 0.1 }),
+  randomEventSeed({ title: "Global Oil Price Spike", type: "international", category: "economic_shock", severity: "high", probability: 0.08 }),
+  randomEventSeed({ title: "Bolivian Political Instability", type: "international", category: "geopolitical_shift", severity: "moderate", probability: 0.1 }),
+  randomEventSeed({ title: "Chinese Trade Delegation Visit", type: "international", category: "trade_development", severity: "moderate", probability: 0.15 }),
+  randomEventSeed({ title: "European Election Results", type: "international", category: "foreign_election", severity: "informational", probability: 0.1 }),
+  randomEventSeed({ title: "UN Climate Summit Announcement", type: "international", category: "diplomatic_incident", severity: "moderate", probability: 0.08 }),
 ];
+
+/** Shared cooldown window for every random-library event once it fires. */
+const RANDOM_EVENT_COOLDOWN_TURNS = 3;
+
+// ---------------------------------------------------------------------------
+// C) Event chaining — resolving certain events seeds a follow-up later
+// ---------------------------------------------------------------------------
+
+const EVENT_CHAINS: Record<
+  string,
+  (state: GameState, parentEvent: WorldEvent) => Partial<WorldEvent> | null
+> = {
+  northeast_drought: (state) => {
+    if (state.approval < 50) {
+      return {
+        title: "Drought Relief Failure — Regional Protests",
+        category: "social_unrest",
+        description:
+          "Communities in the semi-arid Northeast are protesting the inadequacy of federal drought relief. Regional governors are publicly criticising the federal response.",
+        severity: "moderate",
+        requiresResponse: true,
+        location: "Ceará, Piauí, Rio Grande do Norte",
+        responseOptions: [
+          option(
+            "Rush emergency aid package",
+            "Allocate R$800m in emergency drought relief.",
+            { approval: 4, sovereignDebt: 1.5 },
+            2,
+            "Emergency convoys reached affected communities within 48 hours."
+          ),
+          option(
+            "Presidential visit to the region",
+            "Travel to the Northeast to survey relief efforts in person.",
+            { approval: 3, mediaSentiment: 4 },
+            1,
+            "The presidential visit dominated national news."
+          ),
+          option(
+            "Blame state governments for mismanagement",
+            "Publicly attribute the relief failures to state-level incompetence.",
+            { approval: -3, congressionalSupport: -4 },
+            0,
+            "The deflection was widely criticised."
+          ),
+        ],
+      };
+    }
+    return null;
+  },
+  amazon_fire_crisis: () => ({
+    title: "International Environmental Summit Demand",
+    category: "diplomatic_incident",
+    description:
+      "Following the Amazon fires, the EU and UN are demanding Brazil attend an emergency environmental summit and present a credible deforestation reduction plan within 60 days.",
+    severity: "high",
+    requiresResponse: true,
+    location: "Geneva / International",
+    brazilImpact: {
+      description:
+        "Failure to attend or present a credible plan risks triggering EU trade agreement suspension clauses.",
+      severity: "high",
+      affectedAreas: ["Trade", "Diplomacy", "FDI"],
+      suggestedResponse:
+        "Attend the summit and present a concrete Amazon protection framework",
+    },
+    responseOptions: [
+      option(
+        "Attend and commit to binding targets",
+        "Travel to the summit and accept binding deforestation-reduction commitments.",
+        { internationalPressure: -15, fdiFlow: 1.5, approval: 2 },
+        2,
+        "Brazil's commitments were cautiously welcomed by international partners."
+      ),
+      option(
+        "Attend but make only vague commitments",
+        "Attend the summit while avoiding binding targets.",
+        { internationalPressure: -5 },
+        1,
+        "International observers expressed disappointment at the lack of specifics."
+      ),
+      option(
+        "Decline to attend",
+        "Skip the summit entirely.",
+        { internationalPressure: 20, fdiFlow: -2.5, gdpGrowth: -0.3 },
+        0,
+        "Brazil's absence was condemned internationally."
+      ),
+    ],
+  }),
+  unemployment_protests: (state) => {
+    if (state.congressionalSupport < 45) {
+      return {
+        title: "Opposition Tables No-Confidence Motion",
+        category: "political_event",
+        description:
+          "Emboldened by the unemployment protests, the opposition coalition has tabled a formal no-confidence motion in Congress. The government has 14 days to shore up support.",
+        severity: "critical",
+        requiresResponse: true,
+        location: "Brasília",
+        responseOptions: [
+          option(
+            "Negotiate with swing-vote parties",
+            "Offer concessions to undecided coalition partners to secure votes.",
+            { congressionalSupport: 12, approval: -2, sovereignDebt: 1 },
+            2,
+            "Costly concessions secured enough votes to survive the motion."
+          ),
+          option(
+            "Campaign publicly against the motion",
+            "Take the fight to the public and pressure deputies through the media.",
+            { approval: 4, congressionalSupport: 5, mediaSentiment: -3 },
+            2,
+            "Public support helped sway several undecided deputies."
+          ),
+          option(
+            "Let it go to a vote without intervention",
+            "Take no action and allow the motion to proceed to a floor vote.",
+            { congressionalSupport: -10, approval: -5 },
+            0,
+            "The motion passed, triggering a constitutional crisis."
+          ),
+        ],
+      };
+    }
+    return null;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Planning — pure, synchronous. AI detail generation happens separately.
 // ---------------------------------------------------------------------------
 
+function isOnCooldown(state: GameState, eventId: string, turn: number): boolean {
+  const expiresOnTurn = state.eventCooldowns[eventId];
+  return expiresOnTurn !== undefined && expiresOnTurn > turn;
+}
+
+export interface DeterministicEvaluationResult {
+  events: WorldEvent[];
+  cooldownUpdates: CooldownUpdates;
+}
+
 export function evaluateDeterministicEvents(
   state: GameState,
   turn: number
-): WorldEvent[] {
+): DeterministicEvaluationResult {
   const events: WorldEvent[] = [];
+  const cooldownUpdates: CooldownUpdates = {};
 
   for (const def of DETERMINISTIC_EVENTS) {
+    if (isOnCooldown(state, def.id, turn)) continue;
     if (!def.condition(state)) continue;
     if (Math.random() >= def.probability) continue;
 
@@ -591,15 +753,35 @@ export function evaluateDeterministicEvents(
       status: "active",
       playerResponse: null,
       resolvedOnTurn: null,
+      chainedEventId: def.id in EVENT_CHAINS ? def.id : undefined,
     });
+    cooldownUpdates[def.id] = turn + def.cooldownTurns;
   }
 
-  return events;
+  return { events, cooldownUpdates };
 }
 
-/** Rolls the dice against the random-event library, returning any that triggered. */
-export function rollRandomEventSeeds(): RandomEventSeed[] {
-  return RANDOM_EVENTS.filter((seed) => Math.random() < seed.probability);
+export interface RandomSeedEvaluationResult {
+  seeds: RandomEventSeed[];
+  cooldownUpdates: CooldownUpdates;
+}
+
+/** Rolls the dice against the random-event library, skipping anything on cooldown. */
+export function rollRandomEventSeeds(
+  state: GameState,
+  turn: number
+): RandomSeedEvaluationResult {
+  const seeds: RandomEventSeed[] = [];
+  const cooldownUpdates: CooldownUpdates = {};
+
+  for (const seed of RANDOM_EVENTS) {
+    if (isOnCooldown(state, seed.id, turn)) continue;
+    if (Math.random() >= seed.probability) continue;
+    seeds.push(seed);
+    cooldownUpdates[seed.id] = turn + RANDOM_EVENT_COOLDOWN_TURNS;
+  }
+
+  return { seeds, cooldownUpdates };
 }
 
 /** 30% chance per turn to also generate one entirely novel AI-authored event. */
@@ -611,27 +793,36 @@ export interface TurnEventPlan {
   deterministicEvents: WorldEvent[];
   randomSeeds: RandomEventSeed[];
   generateNovel: boolean;
+  /** eventId -> turn its cooldown expires; merge into state.eventCooldowns. */
+  cooldownUpdates: CooldownUpdates;
 }
 
 /**
  * Plans this turn's events: deterministic triggers fire fully-formed (no AI
  * needed), random-library rolls produce seeds that still need AI detail, and
  * a novel-event flag. Padded/trimmed to land in the 3-6 events/turn range.
+ * Events on cooldown (see `state.eventCooldowns`) are skipped entirely.
  */
 export function planTurnEvents(state: GameState, turn: number): TurnEventPlan {
-  const deterministicEvents = evaluateDeterministicEvents(state, turn);
-  let randomSeeds = rollRandomEventSeeds();
+  const { events: deterministicEvents, cooldownUpdates: detCooldowns } =
+    evaluateDeterministicEvents(state, turn);
+  const { seeds: rolledSeeds, cooldownUpdates: randomCooldowns } =
+    rollRandomEventSeeds(state, turn);
+  let randomSeeds = rolledSeeds;
   const generateNovel = shouldGenerateNovelEvent();
+  const cooldownUpdates: CooldownUpdates = { ...detCooldowns, ...randomCooldowns };
 
   let total = deterministicEvents.length + randomSeeds.length + (generateNovel ? 1 : 0);
 
-  // Ensure at least 3 events/turn by force-adding unused random seeds.
+  // Ensure at least 3 events/turn by force-adding unused random seeds (still cooldown-respecting).
   const unused = RANDOM_EVENTS.filter(
-    (seed) => !randomSeeds.some((s) => s.title === seed.title)
+    (seed) =>
+      !randomSeeds.some((s) => s.id === seed.id) && !isOnCooldown(state, seed.id, turn)
   ).sort((a, b) => b.probability - a.probability);
   let i = 0;
   while (total < 3 && i < unused.length) {
     randomSeeds.push(unused[i]);
+    cooldownUpdates[unused[i].id] = turn + RANDOM_EVENT_COOLDOWN_TURNS;
     total++;
     i++;
   }
@@ -640,5 +831,44 @@ export function planTurnEvents(state: GameState, turn: number): TurnEventPlan {
   const maxRandom = Math.max(0, 6 - deterministicEvents.length - (generateNovel ? 1 : 0));
   randomSeeds = randomSeeds.slice(0, maxRandom);
 
-  return { deterministicEvents, randomSeeds, generateNovel };
+  return { deterministicEvents, randomSeeds, generateNovel, cooldownUpdates };
+}
+
+/**
+ * When a world event with a `chainedEventId` is resolved, checks EVENT_CHAINS
+ * for a follow-up event and builds it if the chain condition holds.
+ */
+export function getChainedEvent(
+  resolvedEvent: WorldEvent,
+  state: GameState,
+  currentTurn: number
+): WorldEvent | null {
+  if (!resolvedEvent.chainedEventId) return null;
+  const chainFn = EVENT_CHAINS[resolvedEvent.chainedEventId];
+  if (!chainFn) return null;
+
+  const partial = chainFn(state, resolvedEvent);
+  if (!partial) return null;
+
+  return {
+    id: `wevent_${currentTurn}_chain_${slugify(
+      partial.title ?? resolvedEvent.chainedEventId
+    )}`,
+    type: partial.type ?? resolvedEvent.type,
+    category: partial.category ?? resolvedEvent.category,
+    title: partial.title ?? "Follow-up Development",
+    location: partial.location ?? resolvedEvent.location,
+    description: partial.description ?? "",
+    context: partial.context ?? "",
+    startTurn: currentTurn + 1,
+    expiresOnTurn: currentTurn + 4,
+    severity: partial.severity ?? "moderate",
+    requiresResponse: true,
+    responseOptions: partial.responseOptions ?? [],
+    brazilImpact: partial.brazilImpact ?? null,
+    // Scheduled follow-ups are activated by the turn engine when startTurn arrives.
+    status: "ongoing",
+    playerResponse: null,
+    resolvedOnTurn: null,
+  };
 }

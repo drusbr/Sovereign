@@ -192,6 +192,18 @@ export const OPERATION_STATUS_STYLES: Record<
     bg: "bg-danger/10",
     border: "border-danger/30",
   },
+  stalled: {
+    label: "Stalled",
+    text: "text-amber-400",
+    bg: "bg-amber-400/10",
+    border: "border-amber-400/30",
+  },
+  cancelled: {
+    label: "Cancelled",
+    text: "text-text-muted",
+    bg: "bg-panel-2",
+    border: "border-border",
+  },
 };
 
 export const INTEL_CATEGORY_STYLES: Record<

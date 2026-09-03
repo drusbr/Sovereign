@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { buildAdvisorContext, firstSentence } from "@/lib/gameState";
-import { ADVISORS } from "@/lib/advisors";
-import type { CabinetTurn } from "@/lib/gemini";
+import { getAdvisorsFromState, type AdvisorDefinition } from "@/lib/advisors";
+import type { CabinetTurn } from "@/lib/aiPrompts";
 import { TypingIndicator } from "@/components/advisors/TypingIndicator";
 
 const CABINET_OPENER =
@@ -20,28 +20,37 @@ interface CabinetMessage {
   text: string;
 }
 
-interface Seat {
-  advisorId: string;
-  xPct: number;
-  yPct: number;
-}
-
-const SEATS: Seat[] = [
-  { advisorId: "rocha", xPct: 10, yPct: 44 },
-  { advisorId: "cardoso", xPct: 27, yPct: 10 },
-  { advisorId: "mendes", xPct: 50, yPct: 2 },
-  { advisorId: "leal", xPct: 73, yPct: 10 },
-  { advisorId: "drummond", xPct: 90, yPct: 44 },
+/** Seat positions around the table, in a fixed role order (chief of staff at the head-left). */
+const SEAT_POSITIONS = [
+  { xPct: 10, yPct: 44 },
+  { xPct: 27, yPct: 10 },
+  { xPct: 50, yPct: 2 },
+  { xPct: 73, yPct: 10 },
+  { xPct: 90, yPct: 44 },
 ];
+
+const SEAT_ROLE_ORDER = ["chief_of_staff", "security", "economic", "foreign", "social"];
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** A small randomised pause between cabinet responses, kept out of the component body for purity. */
+function sleepWithJitter(baseMs: number, jitterMs: number) {
+  return sleep(baseMs + Math.random() * jitterMs);
+}
+
 export function CabinetRoom({ onClose }: { onClose: () => void }) {
   const { gameState, addMeetingRecord } = useGame();
+  const advisors = getAdvisorsFromState(gameState);
+  const chiefOfStaff = advisors.find((a) => a.role === "chief_of_staff") ?? advisors[0];
+  const seats = SEAT_ROLE_ORDER.map((role, i) => {
+    const advisor = advisors.find((a) => a.role === role);
+    return advisor ? { advisor, ...SEAT_POSITIONS[i] } : null;
+  }).filter((s): s is { advisor: AdvisorDefinition; xPct: number; yPct: number } => s !== null);
+
   const [messages, setMessages] = useState<CabinetMessage[]>([
-    { id: 0, speaker: "rocha", text: CABINET_OPENER },
+    { id: 0, speaker: chiefOfStaff.id, text: CABINET_OPENER },
   ]);
   const [input, setInput] = useState("");
   const [isFetching, setIsFetching] = useState(false);
@@ -69,7 +78,7 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
   ) {
     for (const r of responses) {
       setActiveSpeakerId(r.advisorId);
-      await sleep(700 + Math.random() * 500);
+      await sleepWithJitter(700, 500);
       setMessages((prev) => [
         ...prev,
         { id: nextId(), speaker: r.advisorId, text: r.message },
@@ -101,6 +110,7 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({
           context: buildAdvisorContext(gameState),
           history,
+          advisors,
         }),
       });
 
@@ -119,7 +129,7 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
         await sleep(400);
         setMessages((prev) => [
           ...prev,
-          { id: nextId(), speaker: "rocha", text: WRAP_UP_LINE },
+          { id: nextId(), speaker: chiefOfStaff.id, text: WRAP_UP_LINE },
         ]);
       }
     } catch (err) {
@@ -140,7 +150,7 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
         const transcript = messages
           .map((m) => {
             if (m.speaker === "player") return `President: ${m.text}`;
-            const advisor = ADVISORS.find((a) => a.id === m.speaker);
+            const advisor = advisors.find((a) => a.id === m.speaker);
             return `${advisor?.name ?? m.speaker}: ${m.text}`;
           })
           .join("\n");
@@ -235,9 +245,8 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
               />
             </svg>
 
-            {SEATS.map((seat) => {
-              const advisor = ADVISORS.find((a) => a.id === seat.advisorId);
-              if (!advisor) return null;
+            {seats.map((seat) => {
+              const advisor = seat.advisor;
               const isSpeaking = activeSpeakerId === advisor.id;
               return (
                 <div
@@ -296,7 +305,7 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
                   </div>
                 );
               }
-              const advisor = ADVISORS.find((a) => a.id === m.speaker);
+              const advisor = advisors.find((a) => a.id === m.speaker);
               if (!advisor) return null;
               return (
                 <div key={m.id} className="flex items-start gap-2">
@@ -338,16 +347,16 @@ export function CabinetRoom({ onClose }: { onClose: () => void }) {
               <div className="flex items-center gap-2">
                 <div
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
-                    ADVISORS.find((a) => a.id === activeSpeakerId)?.avatarTextClass ?? ""
+                    advisors.find((a) => a.id === activeSpeakerId)?.avatarTextClass ?? ""
                   }`}
                   style={{
-                    backgroundColor: ADVISORS.find((a) => a.id === activeSpeakerId)?.hex,
+                    backgroundColor: advisors.find((a) => a.id === activeSpeakerId)?.hex,
                   }}
                 >
-                  {ADVISORS.find((a) => a.id === activeSpeakerId)?.initials}
+                  {advisors.find((a) => a.id === activeSpeakerId)?.initials}
                 </div>
                 <TypingIndicator
-                  color={ADVISORS.find((a) => a.id === activeSpeakerId)?.hex}
+                  color={advisors.find((a) => a.id === activeSpeakerId)?.hex}
                 />
               </div>
             )}

@@ -2,14 +2,20 @@
 
 import { useEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
-import { getAdvisorById } from "@/lib/advisors";
-
-const ROCHA = getAdvisorById("rocha")!;
+import { getAdvisorsFromState } from "@/lib/advisors";
 
 export function SpinRoom() {
-  const { spinRoomAssessment, spinRoomLoading, spinRoomError, fetchSpinRoomAssessment } =
-    useGame();
+  const {
+    gameState,
+    spinRoomAssessment,
+    spinRoomLoading,
+    spinRoomError,
+    fetchSpinRoomAssessment,
+  } = useGame();
   const startedRef = useRef(false);
+  const chiefOfStaff =
+    getAdvisorsFromState(gameState).find((a) => a.role === "chief_of_staff") ??
+    getAdvisorsFromState(gameState)[0];
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -25,14 +31,14 @@ export function SpinRoom() {
 
       <div className="mt-3 flex items-center gap-3">
         <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${ROCHA.avatarTextClass}`}
-          style={{ backgroundColor: ROCHA.hex }}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${chiefOfStaff.avatarTextClass}`}
+          style={{ backgroundColor: chiefOfStaff.hex }}
         >
-          {ROCHA.initials}
+          {chiefOfStaff.initials}
         </div>
         <div>
-          <p className="text-sm font-semibold text-text">{ROCHA.name}</p>
-          <p className="text-xs text-text-muted">{ROCHA.title}</p>
+          <p className="text-sm font-semibold text-text">{chiefOfStaff.name}</p>
+          <p className="text-xs text-text-muted">{chiefOfStaff.title}</p>
         </div>
       </div>
 

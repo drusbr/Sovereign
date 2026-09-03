@@ -1,10 +1,40 @@
 import { BRAZIL_STATE_NAMES } from "@/lib/brazilStates";
-import { ADVISORS, getAdvisorById } from "@/lib/advisors";
+import { ADVISORS, getAdvisorById, type AdvisorDefinition } from "@/lib/advisors";
 import type { NumericStatKey } from "@/lib/simulationEngine";
+import type { ProposedAction } from "@/lib/actions/types";
 
 const CRIMINAL_ORG_IDS = ["pcc", "cv", "militias", "gde", "fdn"];
 
+/** The president the player created in /setup — injected into every AI call so the narrative, briefings, and press all reference the same person. */
+export interface PresidentContext {
+  name: string;
+  age: number;
+  gender: "he" | "she" | "they";
+  homeState: string;
+  background: string;
+  alignment: string;
+  priorities: string[];
+  manifesto: string;
+}
+
+function pronounFor(gender: PresidentContext["gender"]): string {
+  return gender === "he" ? "He" : gender === "she" ? "She" : "They";
+}
+
+/** A short "who is the president" block prepended to prompts alongside the game-state block. */
+export function formatPresidentBlock(president: PresidentContext): string {
+  return `PRESIDENT PROFILE
+Name: ${president.name} (age ${president.age}, pronoun: ${pronounFor(president.gender)})
+Home state: ${president.homeState}
+Background: ${president.background}
+Political alignment: ${president.alignment}
+Top priorities, in order: ${president.priorities.join(", ")}
+Manifesto: "${president.manifesto}"`;
+}
+
 export const SYSTEM_INSTRUCTION = `You are the narrator of a sophisticated nation simulation game. The player is the President of Brazil in January 2026. Brazil is in crisis — organised crime controls significant urban territory, the economy is stagnant, and institutions are weak. When the player issues orders, you generate realistic narrative consequences that reflect how those orders would actually play out given Brazil's real political, economic, and social context. You know Brazil's constitutional structure — laws require congressional passage, the STF can strike down unconstitutional acts, the president cannot simply decree everything. Responses should be 3-5 paragraphs, specific and consequential, with realistic second-order effects.
+
+AUTHORITY HIERARCHY: deterministic game state overrides institutional/action resolution, which overrides structured interpretation, which overrides narrative. Narrative may never contradict a higher level. Do not invent a mandatory procedural requirement, blocker, document, sponsor, assessment, deadline, or approval unless it is explicitly present in the supplied structured institutional facts. Institutional details may be flavour only when they create no new gameplay requirement. If the narrative says the player must do something to progress, that requirement must appear in structured game state and be interactable.
 
 You are determining the mechanical consequences of a presidential order in a nation simulation game. Analyse the order and its likely realistic consequences given the current game state. Return effects as delta values (positive or negative changes) rather than absolute values.
 
@@ -70,9 +100,34 @@ export interface TurnEngineContext {
     threatLevel: string;
   }[];
   recentEvents: { turn: number; date: string; summary: string }[];
+  president: PresidentContext;
+  lifecycleFacts?: {
+    entityId: string;
+    entityType: "PROJECT" | "OPERATION";
+    title: string;
+    status: string;
+    spentThisTurn: number;
+    progress: number;
+    summary: string;
+    operationResults?: Record<string, number>;
+  }[];
 }
 
-export function buildTurnPrompt(orders: string, context: TurnEngineContext): string {
+export interface InstitutionalNarrativeFact {
+  actionId: string;
+  disposition: "EXECUTABLE" | "BLOCKED" | "PENDING";
+  reason?: string;
+  legislativeProceedingCreated: boolean;
+  proceedingId?: string;
+  proceedingStatus?: "INTRODUCED";
+  deterministicBlocker?: string;
+}
+
+export function buildTurnPrompt(
+  actions: ProposedAction[],
+  context: TurnEngineContext,
+  institutionalFacts: InstitutionalNarrativeFact[] = []
+): string {
   const eventLog = context.recentEvents.length
     ? context.recentEvents
         .map((e) => `Turn ${e.turn} (${e.date}): ${e.summary}`)
@@ -85,7 +140,42 @@ export function buildTurnPrompt(orders: string, context: TurnEngineContext): str
     )
     .join("\n");
 
-  return `CURRENT GAME STATE
+  const agenda = actions
+    .map((action, index) => {
+      const targets = action.targets.length
+        ? action.targets.map((target) => `${target.name} [${target.id}]`).join(", ")
+        : "None identified";
+      const issues = action.validationIssues.length
+        ? action.validationIssues.map((item) => `${item.severity}: ${item.message}`).join("; ")
+        : "None";
+      return `ACTION ${index + 1}
+ID: ${action.id}
+Actor: ${action.actorId}
+Order: ${action.rawOrder}
+Interpreted type: ${action.actionType}
+Authority: ${action.authority.type}${action.authority.institution ? ` (${action.authority.institution})` : ""}
+Validation status: ${action.status}
+Validation issues: ${issues}
+Targets: ${targets}
+Parameters: ${JSON.stringify(action.parameters)}`;
+    })
+    .join("\n\n");
+  const institutionalLog = institutionalFacts.length
+    ? institutionalFacts.map((fact) => `Action ID: ${fact.actionId}
+Institutional disposition: ${fact.disposition}
+Legislative proceeding created: ${fact.legislativeProceedingCreated ? "YES" : "NO"}
+${fact.proceedingId ? `Proceeding ID: ${fact.proceedingId}\nProceeding status: ${fact.proceedingStatus}` : `Deterministic blocker: ${fact.deterministicBlocker ?? fact.reason ?? "None represented"}`}`).join("\n\n")
+    : "No institutional facts supplied.";
+  const lifecycleLog = context.lifecycleFacts?.length
+    ? context.lifecycleFacts.map((fact) => `${fact.entityType}: ${fact.title} [${fact.entityId}]
+Status: ${fact.status}; progress: ${fact.progress.toFixed(1)}%; expenditure this turn: R$${fact.spentThisTurn.toFixed(3)}bn
+Result: ${fact.summary}
+${fact.operationResults ? `Exact operation metrics: ${JSON.stringify(fact.operationResults)}` : ""}`).join("\n\n")
+    : "No project or operation lifecycle activity this turn.";
+
+  return `${formatPresidentBlock(context.president)}
+
+CURRENT GAME STATE
 Country: ${context.countryName}
 Player title: ${context.playerTitle}
 Turn number: ${context.turn}
@@ -109,12 +199,16 @@ ${orgLog}
 RECENT EVENTS (most recent last)
 ${eventLog}
 
-ORDERS ISSUED THIS TURN
-"""
-${orders}
-"""
+PROPOSED ACTIONS THIS TURN
+${agenda}
 
-Narrate the consequences of these orders and respond with the required JSON only.`;
+DETERMINISTIC INSTITUTIONAL FACTS — SOURCE OF TRUTH
+${institutionalLog}
+
+DETERMINISTIC PROJECT / OPERATION RESULTS — SOURCE OF TRUTH
+${lifecycleLog}
+
+Treat each action as individually identifiable. When the institutional facts say a legislative proceeding was created, explicitly describe the package as INTRODUCED and now before Congress. Do not claim it failed registration, never reached Congress, passed, failed, or was enacted. A LEGISLATIVE action is only being introduced this turn and receives no policy effects, operation, or project. Actions marked BLOCKED may only be blocked for the deterministic reason supplied above. Project and operation facts are mechanically final: preserve every stated number, do not add casualties, arrests, seizures, spending, progress, success, or failure not present there, and do not contradict status. The structured newOperation and newProject response fields are legacy compatibility fields and must be null; deterministic code creates these entities. If every action is legislative, judicial, unknown, or otherwise non-executable, return zero mechanical effects and null operation/project fields. Resolve executable actions in the overall government session using the existing aggregate effects format and respond with the required JSON only.`;
 }
 
 export interface OrganisationEffect {
@@ -295,6 +389,7 @@ export interface TurnContext {
   approval: number;
   securityIndex: number;
   recentEvents: { turn: number; date: string; summary: string }[];
+  president: PresidentContext;
 }
 
 export const EVENT_SYSTEM_INSTRUCTION = `You are the narrator of a sophisticated nation simulation game. The player is the President of Brazil in January 2026, governing through crisis. They were just presented with an urgent event and chose a specific course of action. Write a short, specific, consequential narrative (1-2 paragraphs) describing the immediate fallout of that choice, grounded in Brazil's real political and constitutional context.
@@ -313,7 +408,9 @@ export interface EventPromptParams {
 
 export function buildEventPrompt(params: EventPromptParams): string {
   const { eventTitle, eventDescription, optionLabel, context } = params;
-  return `CURRENT GAME STATE
+  return `${formatPresidentBlock(context.president)}
+
+CURRENT GAME STATE
 Country: ${context.countryName}
 Player title: ${context.playerTitle}
 Turn number: ${context.turn}
@@ -363,6 +460,7 @@ export interface AdvisorContext {
   activeProjects: number;
   situation: string;
   recentEvents: { turn: number; date: string; summary: string }[];
+  president: PresidentContext;
 }
 
 function formatGameStateBlock(context: AdvisorContext): string {
@@ -372,7 +470,9 @@ function formatGameStateBlock(context: AdvisorContext): string {
         .join("\n")
     : "None yet — this is the first turn.";
 
-  return `CURRENT GAME STATE
+  return `${formatPresidentBlock(context.president)}
+
+CURRENT GAME STATE
 Country: ${context.countryName}
 Player title: ${context.playerTitle}
 Turn number: ${context.turn}
@@ -470,12 +570,13 @@ export function parseAdvisorMeetingResponse(raw: string): AdvisorMeetingResult {
 // Cabinet meetings (all five advisors present at once)
 // ---------------------------------------------------------------------------
 
-const CABINET_ADVISOR_IDS = ADVISORS.map((a) => a.id);
-
-export function buildCabinetSystemInstruction(): string {
-  const personas = ADVISORS.map(
-    (a) => `- id "${a.id}" — ${a.name}, ${a.title}: ${a.personaPrompt}`
-  ).join("\n\n");
+export function buildCabinetSystemInstruction(
+  advisors: AdvisorDefinition[] = ADVISORS
+): string {
+  const personas = advisors
+    .map((a) => `- id "${a.id}" — ${a.name}, ${a.title}: ${a.personaPrompt}`)
+    .join("\n\n");
+  const advisorIds = advisors.map((a) => a.id);
 
   return `You are simulating a live Brazilian presidential cabinet meeting with five advisors present simultaneously:
 
@@ -483,13 +584,13 @@ ${personas}
 
 When the President speaks, decide which advisors would naturally respond:
 - Normally 2-3 of the advisors most relevant to the topic should respond, in a natural speaking order — not all five every time.
-- Advisors can and should disagree with each other when their perspectives genuinely conflict (e.g. Cardoso pushing for force, Drummond raising humanitarian concerns, Rocha weighing the political calculus, Mendes flagging fiscal risk, Leal flagging international fallout).
+- Advisors can and should disagree with each other when their perspectives genuinely conflict.
 - If the President addresses a specific advisor by name or title, that advisor must respond in detail; other advisors may add only a brief one-sentence reaction if relevant, or stay silent.
 - Keep each advisor's response concise and conversational (2-4 sentences), true to their individual voice and personality.
 
 Respond with strict JSON matching this shape, and nothing else:
 {
-  "responses": [ { "advisorId": "<one of: ${CABINET_ADVISOR_IDS.join(", ")}>", "message": "their line of dialogue" } ]
+  "responses": [ { "advisorId": "<one of: ${advisorIds.join(", ")}>", "message": "their line of dialogue" } ]
 }
 List only the advisors who actually speak this turn, in the order they speak.`;
 }
@@ -502,13 +603,14 @@ export interface CabinetTurn {
 
 export function buildCabinetPrompt(
   context: AdvisorContext,
-  history: CabinetTurn[]
+  history: CabinetTurn[],
+  advisors: AdvisorDefinition[] = ADVISORS
 ): string {
   const stateBlock = formatGameStateBlock(context);
   const transcript = history
     .map((turn) => {
       if (turn.speaker === "player") return `PRESIDENT: ${turn.text}`;
-      const advisor = ADVISORS.find((a) => a.id === turn.speaker);
+      const advisor = advisors.find((a) => a.id === turn.speaker);
       return `${advisor?.name ?? turn.speaker}: ${turn.text}`;
     })
     .join("\n");
@@ -533,11 +635,7 @@ export interface CabinetMeetingResult {
 function isCabinetResponseItem(item: unknown): item is CabinetResponseItem {
   if (typeof item !== "object" || item === null) return false;
   const rec = item as Record<string, unknown>;
-  return (
-    typeof rec.advisorId === "string" &&
-    typeof rec.message === "string" &&
-    CABINET_ADVISOR_IDS.includes(rec.advisorId)
-  );
+  return typeof rec.advisorId === "string" && typeof rec.message === "string";
 }
 
 export function parseCabinetResponse(raw: string): CabinetMeetingResult {
@@ -701,9 +799,8 @@ export const SPIN_ROOM_JSON_INSTRUCTIONS = `Respond with strict JSON matching th
   "assessment": "3-4 sentences in your voice, commenting on the current media landscape and recommending which pending interview request (if any) to accept"
 }`;
 
-export function buildSpinRoomSystemInstruction(): string {
-  const rocha = getAdvisorById("rocha");
-  const persona = rocha?.personaPrompt ?? "";
+export function buildSpinRoomSystemInstruction(chiefOfStaffPersona?: string): string {
+  const persona = chiefOfStaffPersona ?? getAdvisorById("rocha")?.personaPrompt ?? "";
   return `${persona}\n\n${SPIN_ROOM_JSON_INSTRUCTIONS}`;
 }
 
@@ -722,6 +819,7 @@ export interface SpinRoomContext {
   pressCoverage: number;
   dominantNarrative: string;
   pendingInterviews: SpinRoomInterview[];
+  president: PresidentContext;
 }
 
 export function buildSpinRoomPrompt(context: SpinRoomContext): string {
@@ -734,7 +832,9 @@ export function buildSpinRoomPrompt(context: SpinRoomContext): string {
         .join("\n")
     : "None currently pending.";
 
-  return `CURRENT MEDIA LANDSCAPE
+  return `${formatPresidentBlock(context.president)}
+
+CURRENT MEDIA LANDSCAPE
 Turn: ${context.turn}
 Date: ${context.date}
 Approval rating: ${context.approval}%
@@ -1005,7 +1105,9 @@ export function buildWorldEventResponsePrompt(params: {
   context: TurnContext;
 }): string {
   const { eventTitle, eventDescription, optionLabel, consequenceHint, context } = params;
-  return `CURRENT GAME STATE
+  return `${formatPresidentBlock(context.president)}
+
+CURRENT GAME STATE
 Country: ${context.countryName}
 Player title: ${context.playerTitle}
 Turn number: ${context.turn}

@@ -4,63 +4,56 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAuth, GUEST_STATE_KEY } from "@/context/AuthContext";
 import {
-  advanceGameDate,
+  loadGameState,
+  recordTurnHistory,
+  saveGameState,
+} from "@/lib/supabase/campaigns";
+import {
   buildAdvisorContext,
-  clamp0to100,
+  buildPresidentContext,
   createInitialGameState,
+  hydrateGameState,
   firstSentence,
-  pushCapped,
   pushTurnRecord,
-  type ActiveOperation,
-  type BrazilImpact,
-  type CriminalOrganisation,
-  type DomesticCategory,
-  type EventResponseOption,
   type GameState,
-  type InternationalCategory,
   type InterviewRequest,
-  type NewsArticle,
   type TurnRecord,
   type WorldEvent,
 } from "@/lib/gameState";
-import { applyStateSecurityChanges } from "@/lib/brazilStates";
 import {
   applyEventEffects,
-  findTriggeredEvent,
   type GameEventDefinition,
 } from "@/lib/events";
-import { getAdvisorById } from "@/lib/advisors";
-import { buildIntelligenceEvent, pushIntelligenceEvent } from "@/lib/intelligence";
-import { adjustCreditRating } from "@/lib/economy";
-import { appendArticles, computePressCoverage, computeSentimentDelta } from "@/lib/media";
-import {
-  applyInternationalPressureDrag,
-  computeActiveNegotiations,
-  computeGlobalStanding,
-  expireOpportunities,
-  maybeAddSecurityOperationPressure,
-} from "@/lib/diplomacy";
-import { getProjectRuntimeInfo, type ProjectDefinition } from "@/lib/projects";
+import { getAdvisorById, getAdvisorsFromState } from "@/lib/advisors";
 import {
   applyNumericEffects,
-  checkFailureThresholds,
-  deriveThreatLevelFromCapacity,
-  describeTriggeredRule,
-  runTurnTick,
   type FailureThreshold,
 } from "@/lib/simulationEngine";
 import type {
-  NewOperationSpec,
-  NewProjectSpec,
-  NovelWorldEventResult,
-  OrganisationEffect,
-  WorldEventDetailResult,
-} from "@/lib/gemini";
-import { planTurnEvents, type RandomEventSeed } from "@/lib/eventGenerator";
+  TurnResult as AITurnResult,
+  WorldEventsResult,
+} from "@/lib/aiPrompts";
+import {
+  getChainedEvent,
+  planTurnEvents,
+} from "@/lib/eventGenerator";
+import type { ProposedAction } from "@/lib/actions/types";
+import { processInstitutionalActions } from "@/lib/turn/institutionalProcessing";
+import { finalizeTurn, resolveTurn } from "@/lib/turn/resolveTurn";
+import { applyCongressAction, type CongressAction } from "@/lib/congress";
+import {
+  cancelLifecycleEntity,
+  createLifecycleEntities,
+  processLifecycleTurn,
+} from "@/lib/operationsProjectsEngine";
+import { applyEventPipeline } from "@/lib/eventPipeline";
 
 export interface TurnResult {
   narrative: string;
@@ -79,7 +72,7 @@ interface GameContextValue {
   isLoading: boolean;
   error: string | null;
   lastResult: TurnResult | null;
-  issueOrders: (orders: string) => Promise<void>;
+  issueOrders: (actions: ProposedAction[]) => Promise<void>;
   activeEvent: GameEventDefinition | null;
   isResolvingEvent: boolean;
   eventError: string | null;
@@ -105,190 +98,85 @@ interface GameContextValue {
   respondToWorldEvent: (eventId: string, optionId: string) => Promise<string>;
   respondingWorldEventId: string | null;
   worldEventResponseError: string | null;
+  /** The Supabase campaign this session is bound to, if the player is authenticated and resumed/started one. */
+  campaignId: string | null;
+  /** Auto-save status for the sidebar's "Auto-saved" indicator. */
+  saveStatus: "idle" | "saving" | "saved" | "error";
+  manageLegislation: (proceedingId: string, action: CongressAction) => Promise<string>;
+  cancelLifecycle: (entityId: string) => Promise<void>;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
 
-function applyOrganisationEffects(
-  orgs: CriminalOrganisation[],
-  effects: OrganisationEffect[]
-): CriminalOrganisation[] {
-  if (effects.length === 0) return orgs;
-  return orgs.map((org) => {
-    const effect = effects.find((e) => e.id === org.id);
-    if (!effect || effect.capacityChange === 0) return org;
-    const nextCapacity = clamp0to100(org.capacity + effect.capacityChange);
-    return {
-      ...org,
-      capacity: nextCapacity,
-      threatLevel: deriveThreatLevelFromCapacity(nextCapacity),
-      trend: effect.capacityChange < 0 ? "weakening" : "growing",
-    };
-  });
-}
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 40);
-}
-
-function applyNewOperation(
-  operations: ActiveOperation[],
-  spec: NewOperationSpec,
-  turn: number
-): ActiveOperation[] {
-  const newOp: ActiveOperation = {
-    id: `op_${turn}_${slugify(spec.name)}`,
-    name: spec.name,
-    type: spec.type,
-    location: spec.location,
-    objective: spec.objective,
-    startTurn: turn,
-    status: "active",
-    leadAgency: spec.leadAgency,
-  };
-  return [...operations, newOp];
-}
-
-function applyNewProject(
-  projects: ProjectDefinition[],
-  spec: NewProjectSpec,
-  turn: number
-): ProjectDefinition[] {
-  const newProject: ProjectDefinition = {
-    id: `proj_${turn}_${slugify(spec.name)}`,
-    name: spec.name,
-    category: spec.category,
-    startTurn: turn,
-    endTurn: turn + spec.durationTurns,
-    statusText: spec.statusText,
-    unlocks: spec.unlocks,
-  };
-  return [...projects, newProject];
-}
-
-function buildWorldEventFromSeed(
-  seed: RandomEventSeed,
-  detail: WorldEventDetailResult | undefined,
-  turn: number,
-  index: number
-): WorldEvent {
-  return {
-    id: `wevent_${turn}_seed_${index}_${slugify(seed.title)}`,
-    type: seed.type,
-    category: seed.category,
-    title: seed.title,
-    location: detail?.location || "Brazil",
-    description: detail?.description || "",
-    context: detail?.context || "",
-    startTurn: turn,
-    expiresOnTurn: turn + (seed.severity === "informational" ? 1 : 2),
-    severity: seed.severity,
-    requiresResponse: false,
-    responseOptions: [],
-    brazilImpact: detail?.brazilImpact
-      ? {
-          description: detail.brazilImpact.description,
-          severity: detail.brazilImpact.severity as BrazilImpact["severity"],
-          affectedAreas: detail.brazilImpact.affectedAreas,
-          suggestedResponse: detail.brazilImpact.suggestedResponse,
-        }
-      : null,
-    status: "ongoing",
-    playerResponse: null,
-    resolvedOnTurn: null,
-  };
-}
-
-function buildWorldEventFromNovel(n: NovelWorldEventResult, turn: number): WorldEvent {
-  const responseOptions: EventResponseOption[] = n.responseOptions.map((o) => ({
-    id: slugify(o.label),
-    label: o.label,
-    description: o.description,
-    effects: o.effects as Partial<Record<keyof GameState, number>>,
-    requiresActionPoints: o.requiresActionPoints,
-    consequenceNarrative: o.consequenceNarrative,
-  }));
-
-  return {
-    id: `wevent_${turn}_novel_${slugify(n.title)}`,
-    type: n.type,
-    category: n.category as DomesticCategory | InternationalCategory,
-    title: n.title,
-    location: n.location,
-    description: n.description,
-    context: n.context,
-    startTurn: turn,
-    expiresOnTurn: turn + (n.requiresResponse ? 3 : 2),
-    severity: n.severity as WorldEvent["severity"],
-    requiresResponse: n.requiresResponse,
-    responseOptions,
-    brazilImpact: n.brazilImpact
-      ? {
-          description: n.brazilImpact.description,
-          severity: n.brazilImpact.severity as BrazilImpact["severity"],
-          affectedAreas: n.brazilImpact.affectedAreas,
-          suggestedResponse: n.brazilImpact.suggestedResponse,
-        }
-      : null,
-    status: n.requiresResponse ? "active" : "ongoing",
-    playerResponse: null,
-    resolvedOnTurn: null,
-  };
-}
-
-/** Moves any world events whose deadline has passed into the resolved/expired archive. */
-function archiveExpiredWorldEvents(state: GameState): GameState {
-  const stillActive: WorldEvent[] = [];
-  const newlyArchived: WorldEvent[] = [];
-
-  for (const ev of state.worldEvents) {
-    if (
-      (ev.status === "active" || ev.status === "ongoing") &&
-      ev.expiresOnTurn <= state.turn
-    ) {
-      newlyArchived.push({
-        ...ev,
-        status: ev.requiresResponse ? "expired" : "resolved",
-        resolvedOnTurn: state.turn,
-      });
-    } else {
-      stillActive.push(ev);
-    }
-  }
-
-  if (newlyArchived.length === 0) return state;
-
-  return {
-    ...state,
-    worldEvents: stillActive,
-    resolvedWorldEvents: [...state.resolvedWorldEvents, ...newlyArchived].slice(-60),
-  };
-}
-
-/** Projects whose phase just crossed into "completed" between the two turn numbers. */
-function findNewlyCompletedProjects(
-  projects: ProjectDefinition[],
-  fromTurn: number,
-  toTurn: number
-): ProjectDefinition[] {
-  return projects.filter((p) => {
-    const was = getProjectRuntimeInfo(p, fromTurn).phase === "completed";
-    const now = getProjectRuntimeInfo(p, toTurn).phase === "completed";
-    return !was && now;
-  });
-}
-
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [gameState, setGameState] = useState<GameState>(() =>
-    createInitialGameState()
-  );
+  const { user, isGuest } = useAuth();
+  const searchParams = useSearchParams();
+  const requestedCampaignId = searchParams.get("campaign");
+
+  const [gameState, setGameState] = useState<GameState>(() => {
+    if (typeof window !== "undefined" && !requestedCampaignId) {
+      const guestRaw = window.localStorage.getItem(GUEST_STATE_KEY);
+      if (guestRaw) {
+        try {
+          return hydrateGameState(JSON.parse(guestRaw) as Partial<GameState>);
+        } catch {
+          // fall through to a fresh game
+        }
+      }
+    }
+    return createInitialGameState();
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<TurnResult | null>(null);
+
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  // Resume a specific authenticated campaign when arriving via ?campaign=<id>.
+  useEffect(() => {
+    if (!requestedCampaignId) return;
+    setCampaignId(requestedCampaignId);
+    loadGameState(requestedCampaignId).then(({ state, error: loadError }) => {
+      if (state) setGameState(state);
+      else if (loadError) console.error("Failed to load campaign:", loadError);
+    });
+  }, [requestedCampaignId]);
+
+  const persistTurn = useCallback(
+    async (
+      newState: GameState,
+      orders: string,
+      narrative: string,
+      approvalChange: number,
+      securityChange: number
+    ) => {
+      if (user && campaignId) {
+        setSaveStatus("saving");
+        const { error: saveError } = await saveGameState(campaignId, newState);
+        if (saveError) {
+          setSaveStatus("error");
+          return;
+        }
+        void recordTurnHistory(
+          campaignId,
+          newState.turn,
+          orders,
+          narrative,
+          approvalChange,
+          securityChange,
+          newState.worldDriftLog.slice(-5)
+        );
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2000);
+      } else if (isGuest && typeof window !== "undefined") {
+        window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(newState));
+      }
+    },
+    [user, campaignId, isGuest]
+  );
 
   const [activeEvent, setActiveEvent] = useState<GameEventDefinition | null>(
     null
@@ -325,22 +213,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const issueOrders = useCallback(
-    async (orders: string) => {
-      const trimmed = orders.trim();
-      if (!trimmed) return;
+    async (actions: ProposedAction[]) => {
+      if (actions.length === 0) return;
+      const submittedActions = processInstitutionalActions(gameState, actions).map(
+        ({ action }) => action
+      );
+      const combinedOrders = submittedActions
+        .map((action) => action.rawOrder.trim())
+        .filter(Boolean)
+        .join("\n");
+      if (!combinedOrders) return;
 
       setIsLoading(true);
       setError(null);
 
       try {
         const current = gameState;
+        const executablePreviewActions = processInstitutionalActions(current, submittedActions)
+          .filter((item) => item.disposition === "EXECUTABLE")
+          .map((item) => item.action);
+        const lifecyclePreview = processLifecycleTurn(
+          createLifecycleEntities(current, executablePreviewActions),
+          current.turn
+        );
 
         // --- Step 8: order resolution — structured Gemini response ---------
         const res = await fetch("/api/turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            orders: trimmed,
+            actions: submittedActions,
             context: {
               countryName: current.countryName,
               playerTitle: current.playerTitle,
@@ -369,6 +271,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 date: h.date,
                 summary: h.eventSummary,
               })),
+              president: buildPresidentContext(current),
+              lifecycleFacts: lifecyclePreview.reports,
             },
           }),
         });
@@ -379,203 +283,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
           throw new Error(data.error ?? "Something went wrong.");
         }
 
-        const approvalChange = data.effects?.approval ?? 0;
-        const securityIndexChange = data.effects?.securityIndex ?? 0;
+        const aiResult = data as AITurnResult & { actions?: ProposedAction[] };
+        const resolvedActions = aiResult.actions ?? submittedActions;
+        const approvalChange = aiResult.effects?.approval ?? 0;
+        const securityIndexChange = aiResult.effects?.securityIndex ?? 0;
 
-        // Apply the order's precise structured effects to a working copy.
-        let working: GameState = applyNumericEffects(
-          {
-            ...current,
-            criminalOrganisations: current.criminalOrganisations.map((o) => ({ ...o })),
-            activeOperations: [...current.activeOperations],
-            projects: current.projects.map((p) => ({ ...p })),
-          },
-          data.effects ?? {}
-        );
-        working = {
-          ...working,
-          criminalOrganisations: applyOrganisationEffects(
-            working.criminalOrganisations,
-            data.organisationEffects ?? []
-          ),
-          stateSecurity: applyStateSecurityChanges(
-            working.stateSecurity,
-            data.stateSecurityChanges ?? []
-          ),
-        };
-        if (data.newOperation) {
-          working = {
-            ...working,
-            activeOperations: applyNewOperation(
-              working.activeOperations,
-              data.newOperation,
-              current.turn
-            ),
-          };
-        }
-        if (data.newProject) {
-          working = {
-            ...working,
-            projects: applyNewProject(working.projects, data.newProject, current.turn),
-          };
-        }
-
-        const record: TurnRecord = {
-          turn: current.turn,
-          date: current.date,
-          orders: trimmed,
-          narrative: data.narrative,
-          eventSummary: data.eventSummary,
-          approvalChange,
-          securityIndexChange,
-        };
-        working = {
-          ...working,
-          situation: data.situationSummary || working.situation,
-          history: pushTurnRecord(working.history, record),
-          intelligenceEvents: pushIntelligenceEvent(
-            working.intelligenceEvents,
-            buildIntelligenceEvent(record)
-          ),
-        };
-
-        // --- Media coverage — independent Gemini call; failure degrades gracefully ---
-        let nextMediaSentiment = working.mediaSentiment;
-        try {
-          const mediaRes = await fetch("/api/media-news", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderSummary: trimmed,
-              narrative: data.narrative,
-              context: buildAdvisorContext(working),
-            }),
-          });
-          const mediaData = await mediaRes.json();
-
-          if (mediaRes.ok) {
-            const articles: NewsArticle[] = mediaData.articles.map(
-              (
-                a: {
-                  outlet: string;
-                  headline: string;
-                  body: string;
-                  sentiment: string;
-                  topic: string;
-                  isBreaking: boolean;
-                },
-                i: number
-              ) => ({
-                id: `article-${current.turn}-${i}`,
-                turn: current.turn,
-                date: current.date,
-                outlet: a.outlet,
-                headline: a.headline,
-                body: a.body,
-                sentiment: a.sentiment,
-                topic: a.topic,
-                isBreaking: a.isBreaking,
-              })
-            );
-
-            const sentimentDelta = computeSentimentDelta(articles);
-            const breakingCount = articles.filter((a) => a.isBreaking).length;
-            nextMediaSentiment = clamp0to100(working.mediaSentiment + sentimentDelta);
-
-            const mediaEvents = [...working.mediaEvents];
-            if (Math.abs(sentimentDelta) >= 5 || breakingCount > 0) {
-              mediaEvents.push({
-                turn: current.turn,
-                date: current.date,
-                description:
-                  mediaData.dominantNarrative ||
-                  articles[0]?.headline ||
-                  "Notable press reaction",
-                sentimentImpact: sentimentDelta,
-              });
-            }
-
-            working = {
-              ...working,
-              newsArticles: appendArticles(working.newsArticles, articles),
-              mediaSentiment: nextMediaSentiment,
-              pressCoverage: computePressCoverage(articles.length, breakingCount),
-              dominantNarrative: mediaData.dominantNarrative || working.dominantNarrative,
-              mediaEvents: mediaEvents.slice(-30),
-            };
-          }
-        } catch (mediaErr) {
-          console.error("Media generation failed:", mediaErr);
-        }
-
-        // --- Diplomacy engine ------------------------------------------------
-        const pressureDrag = applyInternationalPressureDrag(
-          working.diplomaticRelations,
-          working.internationalPressure,
-          current.turn,
-          current.date
-        );
-        const expiredOpportunities = expireOpportunities(
-          working.diplomaticOpportunities,
-          current.turn + 1
-        );
-        const nextDiplomaticPressures = maybeAddSecurityOperationPressure(
-          working.diplomaticPressures,
-          securityIndexChange,
-          current.turn
-        );
-        working = {
-          ...working,
-          diplomaticRelations: pressureDrag.relations,
-          diplomaticOpportunities: expiredOpportunities,
-          diplomaticPressures: nextDiplomaticPressures,
-          diplomaticEvents: [...working.diplomaticEvents, ...pressureDrag.events].slice(
-            -40
-          ),
-          globalStanding: computeGlobalStanding(pressureDrag.relations),
-          activeNegotiations: computeActiveNegotiations(expiredOpportunities),
-        };
-
-        // --- Step 9: push rolling histories (post-effect values) -------------
-        working = {
-          ...working,
-          gdpHistory: pushCapped(working.gdpHistory, working.gdpGrowth),
-          fdiHistory: pushCapped(working.fdiHistory, working.fdiFlow),
-          businessRegistrationHistory: pushCapped(
-            working.businessRegistrationHistory,
-            working.businessRegistrations
-          ),
-          approvalHistory: pushCapped(working.approvalHistory, working.approval),
-          mediaSentimentHistory: pushCapped(
-            working.mediaSentimentHistory,
-            nextMediaSentiment
-          ),
-          // --- Step 10: credit rating -----------------------------------------
-          creditRating: adjustCreditRating(
-            working.creditRating,
-            working.gdpGrowth,
-            working.inflation
-          ),
-        };
-
-        // --- Steps 11-12: advance date, increment turn, reset AP -------------
-        const previousTurn = current.turn;
-        working = {
-          ...working,
-          date: advanceGameDate(current.date),
-          turn: previousTurn + 1,
-          actionPoints: 3,
-        };
-
-        // --- Step 1-2 (of the NEW turn): world tick -----------------------
-        const { newState: ticked, triggeredRules } = runTurnTick(working);
-        const worldDriftLog = triggeredRules
-          .map((id) => describeTriggeredRule(id))
-          .filter((line): line is string => Boolean(line));
-
-        // --- Step 2 (world events): plan + generate this turn's events ----
-        const eventPlan = planTurnEvents(ticked, ticked.turn);
-        const newWorldEvents: WorldEvent[] = [...eventPlan.deterministicEvents];
+        const draft = resolveTurn({
+          state: current,
+          actions: resolvedActions,
+          aiResult,
+          generatedMedia: null,
+        });
+        const eventPlan = planTurnEvents(draft.state, draft.state.turn);
+        let generatedWorldEvents: WorldEventsResult | null = null;
 
         if (eventPlan.randomSeeds.length > 0 || eventPlan.generateNovel) {
           try {
@@ -583,7 +303,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                context: buildAdvisorContext(ticked),
+               context: buildAdvisorContext(draft.state),
                 seeds: eventPlan.randomSeeds.map((s) => ({
                   title: s.title,
                   type: s.type,
@@ -595,91 +315,92 @@ export function GameProvider({ children }: { children: ReactNode }) {
             });
             const weData = await weRes.json();
 
-            if (weRes.ok) {
-              eventPlan.randomSeeds.forEach((seed, i) => {
-                newWorldEvents.push(
-                  buildWorldEventFromSeed(seed, weData.randomEvents?.[i], ticked.turn, i)
-                );
-              });
-              if (weData.novelEvent) {
-                newWorldEvents.push(buildWorldEventFromNovel(weData.novelEvent, ticked.turn));
-              }
-            }
+            if (weRes.ok) generatedWorldEvents = weData as WorldEventsResult;
           } catch (weErr) {
             console.error("World event generation failed:", weErr);
           }
         }
 
-        // --- Steps 3-4: add new events, then archive any that expired -----
-        const withNewEvents: GameState = {
-          ...ticked,
-          worldEvents: [...ticked.worldEvents, ...newWorldEvents],
-        };
-        const eventsResolved = archiveExpiredWorldEvents(withNewEvents);
-
-        // --- Step 5: project completions --------------------------------
-        const newlyCompleted = findNewlyCompletedProjects(
-          eventsResolved.projects,
-          previousTurn,
-          eventsResolved.turn
-        );
-        let finalState: GameState = {
-          ...eventsResolved,
-          worldDriftLog,
-        };
-        if (newlyCompleted.length > 0) {
-          finalState = {
-            ...finalState,
-            worldDriftLog: [
-              ...finalState.worldDriftLog,
-              ...newlyCompleted.map((p) => `${p.name} completed: ${p.unlocks}`),
-            ],
-          };
-        }
-
-        // --- Step 4: failure thresholds — queue any not yet shown -----------
-        const thresholds = checkFailureThresholds(finalState).filter(
-          (t) => !finalState.triggeredFailureThresholdIds.includes(t.id)
-        );
-        if (thresholds.length > 0) {
-          finalState = {
-            ...finalState,
-            triggeredFailureThresholdIds: [
-              ...finalState.triggeredFailureThresholdIds,
-              ...thresholds.map((t) => t.id),
-            ],
-          };
-        }
-
-        // Existing narrative-event system (GAME_EVENTS)
-        const triggeredGameEvent = findTriggeredEvent(finalState);
-        if (triggeredGameEvent) {
-          finalState = {
-            ...finalState,
-            triggeredEventIds: [...finalState.triggeredEventIds, triggeredGameEvent.id],
-          };
-        }
+        const resolution = finalizeTurn(draft, {
+          plan: generatedWorldEvents
+            ? eventPlan
+            : { ...eventPlan, randomSeeds: [], generateNovel: false },
+          randomDetails: generatedWorldEvents?.randomEvents,
+          novelEvent: generatedWorldEvents?.novelEvent,
+        });
+        const finalState = resolution.state;
+        const thresholds = resolution.failureThresholds;
+        const triggeredGameEvent = resolution.triggeredGameEvent;
 
         setGameState(finalState);
         setLastResult({
-          narrative: data.narrative,
+          narrative: aiResult.narrative,
           approvalChange,
           securityIndexChange,
         });
         if (thresholds.length > 0) setActiveFailureAlerts(thresholds);
         if (triggeredGameEvent) setActiveEvent(triggeredGameEvent);
+
+        void persistTurn(
+          finalState,
+          combinedOrders,
+          aiResult.narrative,
+          approvalChange,
+          securityIndexChange
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       } finally {
         setIsLoading(false);
       }
     },
-    [gameState]
+    [gameState, persistTurn]
   );
 
   const dismissFailureAlert = useCallback(() => {
     setActiveFailureAlerts((prev) => prev.slice(1));
   }, []);
+
+  const manageLegislation = useCallback(
+    async (proceedingId: string, action: CongressAction): Promise<string> => {
+      try {
+        const result = applyCongressAction(gameState, proceedingId, action);
+        const reported = applyEventPipeline(gameState, result.state).state;
+        setGameState(reported);
+
+        if (user && campaignId) {
+          setSaveStatus("saving");
+          const { error: saveError } = await saveGameState(campaignId, reported);
+          setSaveStatus(saveError ? "error" : "saved");
+          if (!saveError) setTimeout(() => setSaveStatus("idle"), 2000);
+        } else if (isGuest && typeof window !== "undefined") {
+          window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(reported));
+        }
+        return result.message;
+      } catch (err) {
+        throw err instanceof Error ? err : new Error("Congressional action failed.");
+      }
+    },
+    [gameState, user, campaignId, isGuest]
+  );
+
+  const cancelLifecycle = useCallback(async (entityId: string) => {
+    if (gameState.actionPoints < 1) throw new Error("Cancellation requires 1 action point.");
+    const cancelledRaw = cancelLifecycleEntity(
+      { ...gameState, actionPoints: gameState.actionPoints - 1 },
+      entityId
+    );
+    const cancelled = applyEventPipeline(gameState, cancelledRaw).state;
+    setGameState(cancelled);
+    if (user && campaignId) {
+      setSaveStatus("saving");
+      const { error: saveError } = await saveGameState(campaignId, cancelled);
+      setSaveStatus(saveError ? "error" : "saved");
+      if (!saveError) setTimeout(() => setSaveStatus("idle"), 2000);
+    } else if (isGuest && typeof window !== "undefined") {
+      window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(cancelled));
+    }
+  }, [gameState, user, campaignId, isGuest]);
 
   const respondToWorldEvent = useCallback(
     async (eventId: string, optionId: string): Promise<string> => {
@@ -718,6 +439,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 approval: current.approval,
                 securityIndex: current.securityIndex,
                 recentEvents: [],
+                president: buildPresidentContext(current),
               },
             }),
           });
@@ -745,10 +467,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           resolvedOnTurn: current.turn,
         };
 
+        // Some resolved events seed a follow-up ("the world has memory").
+        const chainedEvent = getChainedEvent(resolvedEvent, effected, effected.turn);
+
         setGameState({
           ...effected,
           actionPoints: Math.max(0, effected.actionPoints - option.requiresActionPoints),
-          worldEvents: effected.worldEvents.filter((e) => e.id !== eventId),
+          worldEvents: [
+            ...effected.worldEvents.filter((e) => e.id !== eventId),
+            ...(chainedEvent ? [chainedEvent] : []),
+          ],
           resolvedWorldEvents: [...effected.resolvedWorldEvents, resolvedEvent].slice(-60),
         });
 
@@ -795,6 +523,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               approval: effected.approval,
               securityIndex: effected.securityIndex,
               recentEvents: [],
+              president: buildPresidentContext(effected),
             },
           }),
         });
@@ -836,10 +565,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const fetchAdvisorBriefing = useCallback(
     async (advisorId: string) => {
-      const advisor = getAdvisorById(advisorId);
+      const current = gameState;
+      const advisor = getAdvisorById(advisorId, getAdvisorsFromState(current));
       if (!advisor) return;
 
-      const current = gameState;
       const cached = advisorBriefings[advisorId];
       if (cached && cached.turnGenerated === current.turn) {
         return; // already fresh for this turn — no need to re-generate
@@ -858,6 +587,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             advisorId,
+            personaPrompt: advisor.personaPrompt,
             context: buildAdvisorContext(current),
           }),
         });
@@ -940,7 +670,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 risk: i.risk,
                 opportunity: i.opportunity,
               })),
+            president: buildPresidentContext(current),
           },
+          chiefOfStaffPersona: getAdvisorsFromState(current).find(
+            (a) => a.role === "chief_of_staff"
+          )?.personaPrompt,
         }),
       });
 
@@ -1010,6 +744,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         respondToWorldEvent,
         respondingWorldEventId,
         worldEventResponseError,
+        campaignId,
+        saveStatus,
+        manageLegislation,
+        cancelLifecycle,
       }}
     >
       {children}

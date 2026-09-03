@@ -1,14 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { Panel } from "@/components/dashboard/Panel";
 import { CircularProgress } from "@/components/dashboard/CircularProgress";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
 import { Sparkline } from "@/components/dashboard/Sparkline";
-import { BrazilMap } from "@/components/dashboard/BrazilMap";
+import {
+  WorldMap,
+  type CountrySelection,
+} from "@/components/map/WorldMap";
 import { WorldDriftLog } from "@/components/dashboard/WorldDriftLog";
 import { WorldEventsWidget } from "@/components/dashboard/WorldEventsWidget";
+import { GoverningCapacity } from "@/components/dashboard/GoverningCapacity";
 
 function approvalColor(value: number) {
   if (value >= 50) return "#10b981";
@@ -25,6 +30,11 @@ function trendVisuals(change: number) {
 
 export default function DashboardPage() {
   const { gameState, lastResult } = useGame();
+  const [selectedCountry, setSelectedCountry] = useState<CountrySelection>({
+    id: "BRA",
+    name: "Brazil",
+    isoA3: "BRA",
+  });
   const approvalChange = lastResult?.approvalChange ?? 0;
   const securityChange = lastResult?.securityIndexChange ?? 0;
   const approvalTrend = trendVisuals(approvalChange);
@@ -45,28 +55,21 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Panel
-          title="Territorial Security Overview"
+          title="Global Strategic Overview"
           className="lg:col-span-2"
           bodyClassName="p-0"
         >
-          <div className="aspect-[4/3] w-full p-4">
-            <BrazilMap stateSecurity={gameState.stateSecurity} />
-          </div>
-          <div className="flex flex-wrap items-center gap-4 border-t border-border px-4 py-3 text-xs text-text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-positive" /> Stable
+          <WorldMap
+            className="h-[clamp(420px,58vh,620px)]"
+            selectedCountryId={selectedCountry.id}
+            onCountrySelect={setSelectedCountry}
+          />
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-4 py-3 text-xs text-text-muted">
+            <span>
+              Selected: <strong className="font-medium text-text">{selectedCountry.name}</strong>
+              <span className="ml-2 font-mono text-accent">{selectedCountry.id}</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-amber-400" /> Elevated
-              risk
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-danger" /> Critical
-            </span>
-            <span className="ml-auto flex items-center gap-1.5">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
-              Active federal operations
-            </span>
+            <span className="sm:ml-auto">Wheel to zoom · Drag to pan · Click to inspect</span>
           </div>
         </Panel>
 
@@ -159,6 +162,12 @@ export default function DashboardPage() {
             {gameState.situation}
           </p>
           <WorldDriftLog entries={gameState.worldDriftLog} />
+          <GoverningCapacity
+            congressionalSupport={gameState.congressionalSupport}
+            civilLiberties={gameState.civilLiberties}
+            internationalPressure={gameState.internationalPressure}
+            approval={gameState.approval}
+          />
         </Panel>
 
         <WorldEventsWidget events={gameState.worldEvents} />

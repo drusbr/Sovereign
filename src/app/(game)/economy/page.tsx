@@ -10,6 +10,7 @@ import { HealthScorecard } from "@/components/economy/HealthScorecard";
 import { FdiTrendChart } from "@/components/economy/FdiTrendChart";
 import { PolicyLevers } from "@/components/economy/PolicyLevers";
 import { IntelligenceLog } from "@/components/intelligence/IntelligenceLog";
+import { FiscalOverview } from "@/components/economy/FiscalOverview";
 
 export default function EconomyPage() {
   const { gameState } = useGame();
@@ -46,6 +47,11 @@ export default function EconomyPage() {
       </div>
 
       <KeyIndicators gameState={gameState} />
+
+      <div>
+        <SectionHeader title="Federal Fiscal Position" />
+        <FiscalOverview gameState={gameState} />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-3">

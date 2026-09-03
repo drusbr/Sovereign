@@ -8,7 +8,7 @@ import { IntelligenceLog } from "@/components/intelligence/IntelligenceLog";
 import { TerritorialAssessment } from "@/components/intelligence/TerritorialAssessment";
 
 export default function IntelligencePage() {
-  const { gameState } = useGame();
+  const { gameState, cancelLifecycle } = useGame();
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
@@ -37,7 +37,7 @@ export default function IntelligencePage() {
 
       <ThreatOverview gameState={gameState} />
       <OrganisationTracker organisations={gameState.criminalOrganisations} />
-      <OperationsTable operations={gameState.activeOperations} />
+      <OperationsTable operations={gameState.activeOperations} onCancel={(id) => void cancelLifecycle(id)} />
       <IntelligenceLog events={gameState.intelligenceEvents} />
       <TerritorialAssessment stateSecurity={gameState.stateSecurity} />
     </div>

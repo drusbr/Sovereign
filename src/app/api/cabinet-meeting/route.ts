@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateAI, AIProviderError } from "@/lib/ai";
 import {
   buildCabinetPrompt,
   buildCabinetSystemInstruction,
   parseCabinetResponse,
   type AdvisorContext,
   type CabinetTurn,
-} from "@/lib/gemini";
+} from "@/lib/aiPrompts";
+import type { AdvisorDefinition } from "@/lib/advisors";
 
 interface CabinetMeetingRequestBody {
   context?: AdvisorContext;
   history?: CabinetTurn[];
+  advisors?: AdvisorDefinition[];
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Server is missing GEMINI_API_KEY." },
-      { status: 500 }
-    );
-  }
-
   let body: CabinetMeetingRequestBody;
   try {
     body = await request.json();
@@ -37,26 +31,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-      systemInstruction: buildCabinetSystemInstruction(),
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
+    const prompt = buildCabinetPrompt(body.context, body.history, body.advisors);
+    const text = await generateAI({
+      system: buildCabinetSystemInstruction(body.advisors),
+      prompt,
+      jsonMode: true,
+      requestName: "cabinet-meeting",
     });
-
-    const prompt = buildCabinetPrompt(body.context, body.history);
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
     const cabinetResult = parseCabinetResponse(text);
 
     return NextResponse.json(cabinetResult);
   } catch (error) {
-    console.error("Gemini cabinet meeting failed:", error);
+    console.error("AI cabinet meeting failed:", error);
+    const status = error instanceof AIProviderError ? 502 : 500;
     return NextResponse.json(
       { error: "The cabinet failed to respond. Please try again." },
-      { status: 502 }
+      { status }
     );
   }
 }

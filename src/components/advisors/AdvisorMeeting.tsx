@@ -5,7 +5,7 @@ import { Send } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { buildAdvisorContext } from "@/lib/gameState";
 import type { AdvisorDefinition } from "@/lib/advisors";
-import type { MeetingTurn } from "@/lib/gemini";
+import type { MeetingTurn } from "@/lib/aiPrompts";
 import { TypingIndicator } from "@/components/advisors/TypingIndicator";
 
 export function AdvisorMeeting({
@@ -44,6 +44,7 @@ export function AdvisorMeeting({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           advisorId: advisor.id,
+          personaPrompt: advisor.personaPrompt,
           context: buildAdvisorContext(gameState),
           history,
         }),

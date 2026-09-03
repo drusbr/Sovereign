@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Settings,
   BookOpen,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -27,6 +28,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/orders", label: "Orders", icon: FileText },
+  { href: "/congress", label: "Congress", icon: Landmark },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/advisors", label: "Advisors", icon: Users },
   { href: "/intelligence", label: "Intelligence", icon: Shield },
@@ -45,7 +47,7 @@ function approvalColor(approval: number) {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { gameState } = useGame();
+  const { gameState, saveStatus } = useGame();
   const urgentEventCount = gameState.worldEvents.filter(
     (e) => e.requiresResponse && e.status === "active"
   ).length;
@@ -135,6 +137,24 @@ export function Sidebar() {
         <p className="mt-0.5 text-sm font-semibold text-text">
           {gameState.date}
         </p>
+        {saveStatus === "saving" && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-text-muted">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-text-muted" />
+            Saving…
+          </p>
+        )}
+        {saveStatus === "saved" && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-positive transition-opacity duration-1000">
+            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+            Auto-saved
+          </p>
+        )}
+        {saveStatus === "error" && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            Save failed — will retry next turn
+          </p>
+        )}
       </div>
     </aside>
   );

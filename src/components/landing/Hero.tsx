@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 export function Hero() {
+  const { isGuest, openAuthModal } = useAuth();
+
   return (
     <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6">
       <div
@@ -37,12 +42,33 @@ export function Hero() {
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/dashboard"
-            className="rounded-md bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent/90"
-          >
-            Begin Campaign
-          </Link>
+          {isGuest && (
+            <Link
+              href="/dashboard"
+              className="rounded-md bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent/90"
+            >
+              Resume Game
+            </Link>
+          )}
+
+          {isGuest ? (
+            <button
+              type="button"
+              onClick={() => openAuthModal("signup")}
+              className="rounded-md border border-border px-6 py-3 text-sm font-semibold text-text transition hover:border-text-muted hover:bg-panel/60"
+            >
+              Begin Campaign
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal("signin")}
+              className="rounded-md bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent/90"
+            >
+              Begin Campaign
+            </button>
+          )}
+
           <Link
             href="/wiki"
             className="rounded-md border border-border px-6 py-3 text-sm font-semibold text-text transition hover:border-text-muted hover:bg-panel/60"

@@ -13,6 +13,20 @@ export interface ProjectDefinition {
   endTurn: number;
   statusText: string;
   unlocks: string;
+  actionId: string;
+  description: string;
+  scope: string;
+  geographicTarget?: string;
+  expectedOutcome: string;
+  difficulty: "LOW" | "MEDIUM" | "HIGH";
+  lifecycle: LifecycleState;
+  completionEffectApplied: boolean;
+  completionRecord?: {
+    turn: number;
+    finalCost: number;
+    durationTurns: number;
+    outcome: string;
+  };
 }
 
 /** Seed data — copied into GameState.projects by createInitialGameState(). */
@@ -27,17 +41,31 @@ export const INITIAL_PROJECTS: ProjectDefinition[] = [
       "Recruits are undergoing urban warfare training at Vila Militar ahead of favela deployment.",
     unlocks:
       "A dedicated special-operations battalion for high-risk favela and border incursions.",
+    actionId: "legacy-bnoe-battalion",
+    description: "Formation and training of a dedicated federal special-operations battalion.",
+    scope: "One federal battalion",
+    expectedOutcome: "Improved federal security capability",
+    difficulty: "MEDIUM",
+    lifecycle: createLifecycle(1, 4, 4.8),
+    completionEffectApplied: false,
   },
   {
     id: "stu-tax-reform",
-    name: "STU Tax Reform Bill",
+    name: "STU Tax Administration Modernisation",
     category: "Economic",
     startTurn: 1,
     endTurn: 8,
     statusText:
-      "Committee hearings are underway in the Chamber of Deputies while the Centrão bloc negotiates amendments.",
+      "Receita Federal teams are preparing systems and guidance for a simplified consumption-tax administration.",
     unlocks:
       "A simplified consumption tax system, projected to lift GDP growth and cut business compliance costs.",
+    actionId: "legacy-stu-tax-reform",
+    description: "Administrative systems and compliance implementation for a unified consumption tax framework.",
+    scope: "National tax administration",
+    expectedOutcome: "Lower business compliance burden",
+    difficulty: "HIGH",
+    lifecycle: createLifecycle(1, 7, 2.1),
+    completionEffectApplied: false,
   },
   {
     id: "escola-viva-rio",
@@ -49,6 +77,14 @@ export const INITIAL_PROJECTS: ProjectDefinition[] = [
       "Renovation crews are refitting three pilot schools in Rio's Zona Norte for extended-hours programming.",
     unlocks:
       "A full-time public school pilot in Rio, expected to boost approval among working-class families.",
+    actionId: "legacy-escola-viva-rio",
+    description: "Renovation and launch of full-day public school pilots.",
+    scope: "Three schools",
+    geographicTarget: "Rio de Janeiro",
+    expectedOutcome: "Expanded full-day education capacity",
+    difficulty: "MEDIUM",
+    lifecycle: createLifecycle(1, 5, 1.2),
+    completionEffectApplied: false,
   },
   {
     id: "angra-3-nuclear",
@@ -60,6 +96,14 @@ export const INITIAL_PROJECTS: ProjectDefinition[] = [
       "Eletronuclear has resumed civil works at the reactor site after years of stalled financing.",
     unlocks:
       "Completion of Angra 3, adding roughly 1,350 MW of baseload capacity to the national grid.",
+    actionId: "legacy-angra-3-nuclear",
+    description: "Completion of civil and systems works at the Angra 3 reactor.",
+    scope: "1,350 MW generation asset",
+    geographicTarget: "Rio de Janeiro",
+    expectedOutcome: "Additional baseload electricity generation",
+    difficulty: "HIGH",
+    lifecycle: createLifecycle(1, 19, 24),
+    completionEffectApplied: false,
   },
 ];
 
@@ -80,6 +124,16 @@ export function getProjectRuntimeInfo(
   project: ProjectDefinition,
   currentTurn: number
 ): ProjectRuntimeInfo {
+  if (project.lifecycle) {
+    const remaining = Math.max(0, project.lifecycle.plannedDurationTurns - project.lifecycle.elapsedTurns);
+    return {
+      progress: Math.round(project.lifecycle.progress),
+      phase: project.lifecycle.status === "COMPLETED" ? "completed"
+        : project.lifecycle.status === "PLANNED" ? "not-started"
+          : remaining <= 2 ? "near-deadline" : "in-progress",
+      turnsRemaining: remaining,
+    };
+  }
   if (currentTurn >= project.endTurn) {
     return { progress: 100, phase: "completed", turnsRemaining: 0 };
   }
@@ -137,3 +191,4 @@ export const CATEGORY_STYLES: Record<
     hex: "#a78bfa",
   },
 };
+import { createLifecycle, type LifecycleState } from "@/lib/lifecycle";

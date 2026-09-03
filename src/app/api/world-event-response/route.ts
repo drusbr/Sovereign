@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateAI, AIProviderError } from "@/lib/ai";
 import {
   WORLD_EVENT_RESPONSE_SYSTEM_INSTRUCTION,
   buildWorldEventResponsePrompt,
   parseWorldEventResponseNarrative,
   type TurnContext,
-} from "@/lib/gemini";
+} from "@/lib/aiPrompts";
 
 interface WorldEventResponseRequestBody {
   eventTitle?: string;
@@ -16,14 +16,6 @@ interface WorldEventResponseRequestBody {
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Server is missing GEMINI_API_KEY." },
-      { status: 500 }
-    );
-  }
-
   let body: WorldEventResponseRequestBody;
   try {
     body = await request.json();
@@ -44,15 +36,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-      systemInstruction: WORLD_EVENT_RESPONSE_SYSTEM_INSTRUCTION,
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    });
-
     const prompt = buildWorldEventResponsePrompt({
       eventTitle,
       eventDescription,
@@ -60,16 +43,21 @@ export async function POST(request: NextRequest) {
       consequenceHint,
       context: body.context,
     });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateAI({
+      system: WORLD_EVENT_RESPONSE_SYSTEM_INSTRUCTION,
+      prompt,
+      jsonMode: true,
+      requestName: "world-event-response",
+    });
     const parsed = parseWorldEventResponseNarrative(text);
 
     return NextResponse.json(parsed);
   } catch (error) {
-    console.error("Gemini world event response failed:", error);
+    console.error("AI world event response failed:", error);
+    const status = error instanceof AIProviderError ? 502 : 500;
     return NextResponse.json(
       { error: "Failed to generate the consequence narrative." },
-      { status: 502 }
+      { status }
     );
   }
 }

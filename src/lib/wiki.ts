@@ -27,6 +27,17 @@ import {
   politicalCrisesArticle,
 } from "@/lib/wiki/government";
 
+import {
+  militaryMoraleArticle,
+  defenceSpendingArticle,
+  intelligenceArticle,
+  organisedCrimeArticle,
+  counterTerrorismArticle,
+  internalSecurityArticle,
+  policeCapacityArticle,
+  militaryOperationsArticle,
+} from "@/lib/wiki/security";
+
 export interface WikiArticle {
   slug: string;
   title: string;
@@ -339,6 +350,46 @@ const ARTICLE_CONTENT: Record<string, ArticleContent> = {
 "government/political-crises": {
   template: "standard",
   ...politicalCrisesArticle,
+},
+
+"security/military-morale": {
+  template: "standard",
+  ...militaryMoraleArticle,
+},
+
+"security/defence-spending": {
+  template: "standard",
+  ...defenceSpendingArticle,
+},
+
+"security/intelligence": {
+  template: "standard",
+  ...intelligenceArticle,
+},
+
+"security/organised-crime": {
+  template: "standard",
+  ...organisedCrimeArticle,
+},
+
+"security/counter-terrorism": {
+  template: "standard",
+  ...counterTerrorismArticle,
+},
+
+"security/internal-security": {
+  template: "standard",
+  ...internalSecurityArticle,
+},
+
+"security/police-capacity": {
+  template: "standard",
+  ...policeCapacityArticle,
+},
+
+"security/military-operations": {
+  template: "standard",
+  ...militaryOperationsArticle,
 },
 };
 

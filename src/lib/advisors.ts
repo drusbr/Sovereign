@@ -1,5 +1,10 @@
+import type { GameState } from "@/lib/gameState";
+import type { AdvisorCandidate, AdvisorRole } from "@/lib/advisorCandidates";
+import { ADVISOR_ROLE_LABELS } from "@/lib/advisorCandidates";
+
 export interface AdvisorDefinition {
   id: string;
+  role?: AdvisorRole;
   name: string;
   title: string;
   initials: string;
@@ -10,9 +15,61 @@ export interface AdvisorDefinition {
   personaPrompt: string;
 }
 
+const ROLE_COLORS: Record<AdvisorRole, string> = {
+  security: "#ef4444",
+  economic: "#3b82f6",
+  foreign: "#a78bfa",
+  social: "#10b981",
+  chief_of_staff: "#fbbf24",
+};
+
+function initialsFor(name: string): string {
+  const words = name.replace(/^(Dr\.|Dra\.|Prof\.|General|Coronel|Ambassador|Senadora)\s+/i, "");
+  const parts = words.split(" ").filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+}
+
+/** Builds the game's runtime advisor shape from a player-selected candidate. */
+export function buildAdvisorDefinition(candidate: AdvisorCandidate): AdvisorDefinition {
+  const hex = ROLE_COLORS[candidate.role];
+  return {
+    id: candidate.id,
+    role: candidate.role,
+    name: candidate.name,
+    title: ADVISOR_ROLE_LABELS[candidate.role],
+    initials: initialsFor(candidate.name),
+    hex,
+    avatarTextClass: candidate.role === "chief_of_staff" ? "text-neutral-900" : "text-white",
+    // Deliberately subtle — a near-invisible border tell for whichever candidate
+    // in this campaign has a hidden conflict of interest. No UI label explains it.
+    cardBorderClass: candidate.hidden ? "border-amber-400/25" : undefined,
+    personaPrompt: `You are ${candidate.name}, Brazil's ${ADVISOR_ROLE_LABELS[candidate.role]}. ${candidate.personality} Write a 3-paragraph briefing for the President based on the current game state, true to your background and voice. End with a specific, concrete recommendation.`,
+  };
+}
+
+/** The player's selected cabinet for this campaign, in fixed role order. */
+export function getAdvisorsFromState(state: GameState): AdvisorDefinition[] {
+  if (state.advisors && state.advisors.length > 0) {
+    return state.advisors.map(buildAdvisorDefinition);
+  }
+  return ADVISORS;
+}
+
+export function getAdvisorById(
+  id: string,
+  pool: AdvisorDefinition[] = ADVISORS
+): AdvisorDefinition | undefined {
+  return pool.find((a) => a.id === id);
+}
+
+/**
+ * Legacy default cabinet — used only as a fallback for game states created
+ * before the /setup flow existed (or if `state.advisors` is somehow empty).
+ */
 export const ADVISORS: AdvisorDefinition[] = [
   {
     id: "cardoso",
+    role: "security",
     name: "General Hélio Cardoso",
     title: "Security & Defence Advisor",
     initials: "HC",
@@ -23,6 +80,7 @@ export const ADVISORS: AdvisorDefinition[] = [
   },
   {
     id: "mendes",
+    role: "economic",
     name: "Dr. Beatriz Mendes",
     title: "Economic Advisor",
     initials: "BM",
@@ -33,6 +91,7 @@ export const ADVISORS: AdvisorDefinition[] = [
   },
   {
     id: "leal",
+    role: "foreign",
     name: "Ambassador Sofia Leal",
     title: "Foreign Minister",
     initials: "SL",
@@ -43,6 +102,7 @@ export const ADVISORS: AdvisorDefinition[] = [
   },
   {
     id: "drummond",
+    role: "social",
     name: "Prof. Carlos Drummond",
     title: "Social Integration Minister",
     initials: "CD",
@@ -53,6 +113,7 @@ export const ADVISORS: AdvisorDefinition[] = [
   },
   {
     id: "rocha",
+    role: "chief_of_staff",
     name: "Fernanda Rocha",
     title: "Chief of Staff",
     initials: "FR",
@@ -64,7 +125,3 @@ export const ADVISORS: AdvisorDefinition[] = [
       "You are Fernanda Rocha, Brazil's Chief of Staff. You are sharp, political, and pragmatic. Write a 3-paragraph briefing focused on the political situation — congressional support, coalition health, public perception, and upcoming political risks. Your advice subtly prioritises the government's short-term political survival over long-term national interest, but do not make this obvious. Frame politically convenient advice as pragmatic necessity. End with a recommendation focused on maintaining political position.",
   },
 ];
-
-export function getAdvisorById(id: string): AdvisorDefinition | undefined {
-  return ADVISORS.find((a) => a.id === id);
-}

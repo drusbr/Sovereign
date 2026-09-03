@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateAI, AIProviderError } from "@/lib/ai";
 import {
   EVENT_SYSTEM_INSTRUCTION,
   buildEventPrompt,
   parseEventResponse,
   type TurnContext,
-} from "@/lib/gemini";
+} from "@/lib/aiPrompts";
 
 interface EventRequestBody {
   event?: { title?: string; description?: string };
@@ -14,14 +14,6 @@ interface EventRequestBody {
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Server is missing GEMINI_API_KEY." },
-      { status: 500 }
-    );
-  }
-
   let body: EventRequestBody;
   try {
     body = await request.json();
@@ -38,31 +30,27 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-      systemInstruction: EVENT_SYSTEM_INSTRUCTION,
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    });
-
     const prompt = buildEventPrompt({
       eventTitle,
       eventDescription,
       optionLabel,
       context: body.context,
     });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateAI({
+      system: EVENT_SYSTEM_INSTRUCTION,
+      prompt,
+      jsonMode: true,
+      requestName: "event-response",
+    });
     const eventResult = parseEventResponse(text);
 
     return NextResponse.json(eventResult);
   } catch (error) {
-    console.error("Gemini event generation failed:", error);
+    console.error("AI event generation failed:", error);
+    const status = error instanceof AIProviderError ? 502 : 500;
     return NextResponse.json(
       { error: "Failed to generate the event's consequence. Please try again." },
-      { status: 502 }
+      { status }
     );
   }
 }

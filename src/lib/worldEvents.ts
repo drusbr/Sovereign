@@ -51,14 +51,14 @@ export function turnsRemaining(event: WorldEvent, currentTurn: number): number {
   return Math.max(0, event.expiresOnTurn - currentTurn);
 }
 
-export function requiresAttention(event: WorldEvent): boolean {
-  return event.requiresResponse && event.status === "active";
+export function requiresAttention(event: WorldEvent, currentTurn = event.startTurn): boolean {
+  return event.startTurn <= currentTurn && event.requiresResponse && event.status === "active";
 }
 
-export function isOngoingSituation(event: WorldEvent): boolean {
-  return !requiresAttention(event) && event.severity !== "informational";
+export function isOngoingSituation(event: WorldEvent, currentTurn = event.startTurn): boolean {
+  return event.startTurn <= currentTurn && !requiresAttention(event, currentTurn) && event.severity !== "informational";
 }
 
-export function isWorldFeedItem(event: WorldEvent): boolean {
-  return event.severity === "informational";
+export function isWorldFeedItem(event: WorldEvent, currentTurn = event.startTurn): boolean {
+  return event.startTurn <= currentTurn && event.severity === "informational";
 }

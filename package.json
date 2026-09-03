@@ -6,11 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:actions": "node --experimental-strip-types --test src/lib/actions/validation.test.ts",
+    "test:turn": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/turn/resolveTurn.test.ts",
+    "test:congress": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/congress.test.ts",
+    "test:fiscal": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/fiscal.test.ts",
+    "test:lifecycle": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/operationsProjectsEngine.test.ts",
+    "test:events": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/eventDetector.test.ts src/lib/proceduralWriter.test.ts",
+    "test:integration": "node --experimental-strip-types --experimental-loader ./scripts/typescript-test-loader.mjs --test src/lib/playtestIntegration.test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.114.0",
     "@svg-maps/brazil": "^2.0.0",
+    "d3-geo": "^3.1.1",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "react": "19.2.8",
@@ -19,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/d3-geo": "^3.1.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -5,15 +5,15 @@ import { ProjectCard } from "@/components/projects/ProjectCard";
 import { getProjectRuntimeInfo } from "@/lib/projects";
 
 export default function ProjectsPage() {
-  const { gameState } = useGame();
+  const { gameState, cancelLifecycle } = useGame();
 
   const enriched = gameState.projects.map((project) => ({
     project,
     info: getProjectRuntimeInfo(project, gameState.turn),
   }));
 
-  const active = enriched.filter(({ info }) => info.phase !== "completed");
-  const completed = enriched.filter(({ info }) => info.phase === "completed");
+  const active = enriched.filter(({ project }) => !["COMPLETED", "FAILED", "CANCELLED"].includes(project.lifecycle.status));
+  const completed = enriched.filter(({ project }) => ["COMPLETED", "FAILED", "CANCELLED"].includes(project.lifecycle.status));
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -36,7 +36,7 @@ export default function ProjectsPage() {
         {active.length > 0 ? (
           <div className="space-y-3">
             {active.map(({ project, info }) => (
-              <ProjectCard key={project.id} project={project} info={info} />
+              <ProjectCard key={project.id} project={project} info={info} onCancel={(id) => void cancelLifecycle(id)} />
             ))}
           </div>
         ) : (
@@ -49,7 +49,7 @@ export default function ProjectsPage() {
       {completed.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">
-            Completed ({completed.length})
+            Historical ({completed.length})
           </h2>
           <div className="space-y-3">
             {completed.map(({ project, info }) => (

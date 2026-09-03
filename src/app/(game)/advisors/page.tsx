@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Users2, Zap } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { firstSentence } from "@/lib/gameState";
-import { ADVISORS } from "@/lib/advisors";
+import { getAdvisorsFromState } from "@/lib/advisors";
 import { AdvisorCard } from "@/components/advisors/AdvisorCard";
 import { AdvisorPanel } from "@/components/advisors/AdvisorPanel";
 import { CabinetRoom } from "@/components/advisors/CabinetRoom";
@@ -32,7 +32,8 @@ export default function AdvisorsPage() {
     }
   }
 
-  const openAdvisor = ADVISORS.find((a) => a.id === openAdvisorId) ?? null;
+  const advisors = getAdvisorsFromState(gameState);
+  const openAdvisor = advisors.find((a) => a.id === openAdvisorId) ?? null;
 
   return (
     <div className="p-6">
@@ -75,7 +76,7 @@ export default function AdvisorsPage() {
       )}
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {ADVISORS.map((advisor) => {
+        {advisors.map((advisor) => {
           const briefing = advisorBriefings[advisor.id];
           const isUpToDate = briefing?.turnGenerated === gameState.turn;
           const preview = briefing

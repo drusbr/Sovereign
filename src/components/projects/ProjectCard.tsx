@@ -9,9 +9,11 @@ import {
 export function ProjectCard({
   project,
   info,
+  onCancel,
 }: {
   project: ProjectDefinition;
   info: ProjectRuntimeInfo;
+  onCancel?: (id: string) => void;
 }) {
   const style = CATEGORY_STYLES[project.category];
   const isCompleted = info.phase === "completed";
@@ -53,6 +55,11 @@ export function ProjectCard({
               : `Due in ${info.turnsRemaining} turn${info.turnsRemaining === 1 ? "" : "s"}`}
           </span>
         )}
+        {(project.lifecycle.status === "FAILED" || project.lifecycle.status === "CANCELLED") && (
+          <span className="rounded-full border border-danger/30 bg-danger/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-danger">
+            {project.lifecycle.status}
+          </span>
+        )}
       </div>
 
       {!isCompleted && (
@@ -78,6 +85,31 @@ export function ProjectCard({
         </span>
         {project.unlocks}
       </p>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/60 pt-3 text-[11px] sm:grid-cols-4">
+        <Metric label="Status" value={project.lifecycle.status} />
+        <Metric label="Budget" value={`R$${project.lifecycle.totalBudget.toFixed(2)}bn`} />
+        <Metric label="Spent" value={`R$${project.lifecycle.spent.toFixed(2)}bn`} />
+        <Metric label="Remaining" value={`R$${project.lifecycle.remainingBudget.toFixed(2)}bn`} />
+        <Metric label="Elapsed" value={`${project.lifecycle.elapsedTurns} turns`} />
+        <Metric label="Expected" value={`${project.lifecycle.plannedDurationTurns} turns`} />
+        <Metric label="Scope" value={project.scope} />
+        <Metric label="Outcome" value={project.expectedOutcome} />
+      </div>
+
+      {onCancel && !["COMPLETED", "FAILED", "CANCELLED"].includes(project.lifecycle.status) && (
+        <button
+          type="button"
+          onClick={() => onCancel(project.id)}
+          className="mt-3 rounded border border-danger/30 px-3 py-1.5 text-[11px] font-semibold text-danger hover:bg-danger/10"
+        >
+          Cancel project · 1 AP
+        </button>
+      )}
     </div>
   );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div><p className="uppercase tracking-wide text-text-muted">{label}</p><p className="mt-0.5 text-text">{value}</p></div>;
 }

@@ -1,6 +1,18 @@
 import { DEFAULT_STATE_SECURITY, type SecurityStatus } from "@/lib/brazilStates";
-import type { AdvisorContext } from "@/lib/gemini";
+import type { AdvisorContext, PresidentContext } from "@/lib/aiPrompts";
 import { INITIAL_PROJECTS, type ProjectDefinition } from "@/lib/projects";
+import type { SelectedAdvisor } from "@/lib/advisorCandidates";
+import type {
+  ActionType,
+  AuthorityType,
+  ProposedAction,
+  ValidationIssue,
+} from "@/lib/actions/types";
+import type { LegislativeProceeding } from "@/lib/congress";
+import { createInitialFiscalState, type FiscalState } from "@/lib/fiscal";
+import { createLifecycle, type LifecycleState } from "@/lib/lifecycle";
+import type { LifecycleTurnReport } from "@/lib/operationsProjectsEngine";
+import type { EventFact } from "@/lib/eventFacts";
 
 export interface TurnRecord {
   turn: number;
@@ -10,6 +22,22 @@ export interface TurnRecord {
   eventSummary: string;
   approvalChange: number;
   securityIndexChange: number;
+  /** Individually identified actions submitted in this turn. Optional for old saves. */
+  actions?: ProposedAction[];
+  institutionalRecords?: {
+    actionId: string;
+    rawOrder: string;
+    interpretedActionType: ActionType;
+    authority: AuthorityType;
+    validationIssues: ValidationIssue[];
+    disposition: "EXECUTABLE" | "BLOCKED" | "PENDING";
+    reason?: string;
+    proceedingCreated: boolean;
+    proceedingId?: string;
+  }[];
+  /** Deterministic project/operation facts for this turn; narrative may only describe these. */
+  lifecycleReports?: LifecycleTurnReport[];
+  eventFactIds?: string[];
 }
 
 export interface CriminalOrganisation {
@@ -31,9 +59,44 @@ export interface ActiveOperation {
   location: string;
   objective: string;
   startTurn: number;
-  status: "active" | "successful" | "ongoing" | "failed";
+  status: "active" | "successful" | "ongoing" | "failed" | "stalled" | "cancelled";
   leadAgency: string;
+  actionId: string;
+  targetOrganisationId?: string;
+  participatingInstitutions: string[];
+  phase: "PLANNING" | "ACTIVE" | "CONCLUDING" | "COMPLETED";
+  intelligenceQuality: number;
+  readiness: number;
+  operationalRisk: "LOW" | "MEDIUM" | "HIGH";
+  lifecycle: LifecycleState;
+  thisTurnResults: OperationMetrics;
+  cumulativeResults: OperationMetrics;
+  finalOutcome?: "SUCCESS" | "PARTIAL_SUCCESS" | "FAILURE";
 }
+
+export interface OperationMetrics {
+  arrests: number;
+  highValueArrests: number;
+  assetsSeized: number; // R$bn, frozen pending legal disposition
+  weaponsSeized: number;
+  facilitiesDisrupted: number;
+  criminalCapacityReduction: number;
+  governmentCasualties: number;
+  civilianCasualties: number;
+  intelligenceGained: number;
+}
+
+export const EMPTY_OPERATION_METRICS: OperationMetrics = {
+  arrests: 0,
+  highValueArrests: 0,
+  assetsSeized: 0,
+  weaponsSeized: 0,
+  facilitiesDisrupted: 0,
+  criminalCapacityReduction: 0,
+  governmentCasualties: 0,
+  civilianCasualties: 0,
+  intelligenceGained: 0,
+};
 
 export interface IntelligenceEvent {
   turn: number;
@@ -63,6 +126,9 @@ export interface NewsArticle {
   sentiment: "positive" | "neutral" | "negative" | "critical";
   topic: "security" | "economy" | "diplomacy" | "social" | "corruption" | "politics";
   isBreaking: boolean;
+  eventFactId?: string;
+  eventFactIds?: string[];
+  isProcedural?: boolean;
 }
 
 export interface InterviewRequest {
@@ -192,6 +258,8 @@ export interface WorldEvent {
   status: "active" | "ongoing" | "resolved" | "expired";
   playerResponse: string | null;
   resolvedOnTurn: number | null;
+  /** If set, resolving this event seeds a follow-up event via EVENT_CHAINS. */
+  chainedEventId?: string;
 }
 
 export interface GameState {
@@ -231,6 +299,8 @@ export interface GameState {
   businessRegistrationHistory: number[]; // last 7 turns
   approvalHistory: number[]; // last 7 turns — for sparkline on dashboard
   sovereignDebt: number; // percentage of GDP
+  /** Deterministic federal fiscal ledger. Monetary amounts are BRL billions. */
+  fiscal: FiscalState;
   publicInvestment: number; // percentage of GDP
   mediaSentiment: number; // 0-100, overall press sentiment
   mediaSentimentHistory: number[]; // last 7 turns — mirrors approvalHistory
@@ -255,6 +325,24 @@ export interface GameState {
   triggeredFailureThresholdIds: string[];
   worldEvents: WorldEvent[];
   resolvedWorldEvents: WorldEvent[];
+  /** Structured simulation history; prose is a representation, not the source of truth. */
+  eventHistory: EventFact[];
+  proceduralTemplateHistory: string[];
+  /** eventId -> turn number when its cooldown expires (event can't re-fire before then). */
+  eventCooldowns: Record<string, number>;
+  /** Persistent bills and their bicameral institutional progress. */
+  legislativeProceedings: LegislativeProceeding[];
+  /** The five advisors selected in /setup. */
+  advisors: SelectedAdvisor[];
+  presidentialManifesto: string;
+  presidentialPriorities: string[];
+  playerAge: number;
+  playerGender: "he" | "she" | "they";
+  playerHomeState: string;
+  playerBackground: string;
+  playerAlignment: "left" | "centre" | "right";
+  /** Avatar seed for the president's selected portrait. */
+  playerPortrait: string;
 }
 
 const START_DATE = new Date(Date.UTC(2026, 0, 8)); // January 8th 2026
@@ -280,7 +368,7 @@ export function createInitialGameState(): GameState {
     gdpGrowth: 1.8,
     gdpHistory: [1.1, 1.3, 1.2, 1.5, 1.4, 1.6, 1.8],
     inflation: 4.6,
-    activeProjects: 3,
+    activeProjects: 4,
     situation:
       "Organised crime factions continue to contest territory in Rio de Janeiro and São Paulo's periphery, while Congress stalls key economic reforms. Public patience is thinning, but no single crisis yet dominates the news cycle.",
     congressionalSupport: 50,
@@ -363,6 +451,16 @@ export function createInitialGameState(): GameState {
         startTurn: 1,
         status: "active",
         leadAgency: "BNOE / Federal Police",
+        actionId: "legacy-op-complexo",
+        targetOrganisationId: "cv",
+        participatingInstitutions: ["BNOE", "Federal Police"],
+        phase: "ACTIVE",
+        intelligenceQuality: 58,
+        readiness: 64,
+        operationalRisk: "HIGH",
+        lifecycle: { ...createLifecycle(1, 8, 1.6), status: "ACTIVE" },
+        thisTurnResults: { ...EMPTY_OPERATION_METRICS },
+        cumulativeResults: { ...EMPTY_OPERATION_METRICS },
       },
       {
         id: "op_espelho",
@@ -373,6 +471,15 @@ export function createInitialGameState(): GameState {
         startTurn: 1,
         status: "active",
         leadAgency: "ANIP",
+        actionId: "legacy-op-espelho",
+        participatingInstitutions: ["ANIP", "Federal Police"],
+        phase: "ACTIVE",
+        intelligenceQuality: 72,
+        readiness: 55,
+        operationalRisk: "MEDIUM",
+        lifecycle: { ...createLifecycle(1, 10, 0.9), status: "ACTIVE" },
+        thisTurnResults: { ...EMPTY_OPERATION_METRICS },
+        cumulativeResults: { ...EMPTY_OPERATION_METRICS },
       },
     ],
     anipCases: 12,
@@ -388,6 +495,7 @@ export function createInitialGameState(): GameState {
     businessRegistrationHistory: [3100, 3400, 3200, 3600, 3800, 4000, 4200],
     approvalHistory: [45, 45, 45, 45, 45, 45, 45],
     sovereignDebt: 88,
+    fiscal: createInitialFiscalState(),
     publicInvestment: 3.2,
     mediaSentiment: 52,
     mediaSentimentHistory: [52, 52, 52, 52, 52, 52, 52],
@@ -668,6 +776,82 @@ export function createInitialGameState(): GameState {
     triggeredFailureThresholdIds: [],
     worldEvents: [],
     resolvedWorldEvents: [],
+    eventHistory: [],
+    proceduralTemplateHistory: [],
+    eventCooldowns: {},
+    legislativeProceedings: [],
+    advisors: [],
+    presidentialManifesto: "",
+    presidentialPriorities: [],
+    playerAge: 48,
+    playerGender: "they",
+    playerHomeState: "São Paulo",
+    playerBackground: "",
+    playerAlignment: "centre",
+    playerPortrait: "portrait-01",
+  };
+}
+
+/** Adds fields introduced after an older JSON save was created. */
+export function hydrateGameState(saved: Partial<GameState>): GameState {
+  const defaults = createInitialGameState();
+  return {
+    ...defaults,
+    ...saved,
+    fiscal: saved.fiscal ? {
+      ...saved.fiscal,
+      ledger: saved.fiscal.ledger.map((entry) => ({
+        ...entry,
+        date: entry.date ?? saved.date ?? defaults.date,
+        originType: entry.originType ?? (entry.kind === "FUND_PROJECT" ? "PROJECT" : entry.kind === "FUND_OPERATION" ? "OPERATION" : "ACTION"),
+        annualRunRateImpact: entry.annualRunRateImpact ?? (entry.timing === "ONE_OFF" ? 0 : entry.balanceImpact),
+        currentTurnCashImpact: entry.currentTurnCashImpact ?? (entry.timing === "ONE_OFF" ? entry.balanceImpact : entry.balanceImpact / 52),
+      })),
+    } : defaults.fiscal,
+    sovereignDebt: saved.fiscal?.debtToGDP ?? saved.sovereignDebt ?? defaults.sovereignDebt,
+    legislativeProceedings: saved.legislativeProceedings ?? [],
+    eventCooldowns: saved.eventCooldowns ?? {},
+    worldEvents: saved.worldEvents ?? [],
+    resolvedWorldEvents: saved.resolvedWorldEvents ?? [],
+    eventHistory: saved.eventHistory ?? [],
+    proceduralTemplateHistory: saved.proceduralTemplateHistory ?? [],
+    triggeredFailureThresholdIds: saved.triggeredFailureThresholdIds ?? [],
+    worldDriftLog: saved.worldDriftLog ?? [],
+    advisors: saved.advisors ?? defaults.advisors,
+    projects: (saved.projects ?? defaults.projects).map((project) => ({
+      ...project,
+      ...(project.name === "STU Tax Reform Bill" ? {
+        name: "STU Tax Administration Modernisation",
+        description: "Administrative systems and compliance implementation for a unified consumption tax framework.",
+        statusText: "Tax-administration systems are being modernised; legislation remains a separate congressional process.",
+      } : {}),
+      actionId: project.actionId ?? `legacy-${project.id}`,
+      description: project.description ?? project.statusText,
+      scope: project.scope ?? "Legacy programme scope",
+      expectedOutcome: project.expectedOutcome ?? project.unlocks,
+      difficulty: project.difficulty ?? "MEDIUM",
+      lifecycle: project.lifecycle ?? {
+        ...createLifecycle(project.startTurn, Math.max(1, project.endTurn - project.startTurn), 0),
+        status: saved.turn && saved.turn >= project.endTurn ? "COMPLETED" : "ACTIVE",
+        progress: saved.turn ? Math.min(100, Math.max(0, (saved.turn - project.startTurn) / Math.max(1, project.endTurn - project.startTurn) * 100)) : 0,
+      },
+      completionEffectApplied: project.completionEffectApplied ?? false,
+    })),
+    activeOperations: (saved.activeOperations ?? defaults.activeOperations).map((operation) => ({
+      ...operation,
+      name: /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(operation.name)
+        ? `Federal Security Operation${operation.location && operation.location !== "National" ? ` in ${operation.location}` : ""}`
+        : operation.name,
+      actionId: operation.actionId ?? `legacy-${operation.id}`,
+      participatingInstitutions: operation.participatingInstitutions ?? [operation.leadAgency],
+      phase: operation.phase ?? "ACTIVE",
+      intelligenceQuality: operation.intelligenceQuality ?? 50,
+      readiness: operation.readiness ?? 50,
+      operationalRisk: operation.operationalRisk ?? "MEDIUM",
+      lifecycle: operation.lifecycle ?? { ...createLifecycle(operation.startTurn, 8, 0), status: "ACTIVE" },
+      thisTurnResults: operation.thisTurnResults ?? { ...EMPTY_OPERATION_METRICS },
+      cumulativeResults: operation.cumulativeResults ?? { ...EMPTY_OPERATION_METRICS },
+    })),
   };
 }
 
@@ -707,6 +891,26 @@ export function firstSentence(text: string, maxLength = 160): string {
     : sentence;
 }
 
+const ALIGNMENT_NAMES: Record<GameState["playerAlignment"], string> = {
+  left: "Aliança Progressista",
+  centre: "Centro Democrático",
+  right: "Renovação Nacional",
+};
+
+/** Builds the "who is the president" block injected into every AI call. */
+export function buildPresidentContext(state: GameState): PresidentContext {
+  return {
+    name: state.playerName,
+    age: state.playerAge,
+    gender: state.playerGender,
+    homeState: state.playerHomeState,
+    background: state.playerBackground,
+    alignment: ALIGNMENT_NAMES[state.playerAlignment],
+    priorities: state.presidentialPriorities,
+    manifesto: state.presidentialManifesto,
+  };
+}
+
 /** Builds the game-state payload shared by advisor briefings and meetings. */
 export function buildAdvisorContext(state: GameState): AdvisorContext {
   return {
@@ -725,5 +929,6 @@ export function buildAdvisorContext(state: GameState): AdvisorContext {
       date: h.date,
       summary: h.eventSummary,
     })),
+    president: buildPresidentContext(state),
   };
 }
