@@ -1,5 +1,7 @@
 import type { CriminalOrganisation, EducationState, GameState } from "@/lib/gameState";
 import { clamp0to100, pushCapped } from "@/lib/gameState";
+import { advanceEconomy } from "@/lib/economy/advanceEconomy";
+import type { DemandContributions } from "@/lib/economy/types";
 
 /**
  * Rounds every numeric GameState field to a sensible display precision.
@@ -41,6 +43,13 @@ export function roundGameStateNumbers(state: GameState): GameState {
       dropoutRate: Math.round(state.education.dropoutRate * 100) / 100,
       pisaEquivalentScore: Math.round(state.education.pisaEquivalentScore * 10) / 10,
       educationIndex: Math.round(state.education.educationIndex),
+    },
+    economyDynamics: {
+      ...state.economyDynamics,
+      demandPressure: Math.round(state.economyDynamics.demandPressure * 10000) / 10000,
+      outputGap: Math.round(state.economyDynamics.outputGap * 10000) / 10000,
+      inflationPressure: Math.round(state.economyDynamics.inflationPressure * 10000) / 10000,
+      labourSlack: Math.round(state.economyDynamics.labourSlack * 10000) / 10000,
     },
   };
 }
@@ -87,21 +96,28 @@ export interface SimulationRule {
 }
 
 export const RELATIONSHIPS: SimulationRule[] = [
-  // Security affects economy
+  // Security affects economy. The gdpGrowth components of these two rules were
+  // retired in the Economic Simulation V2 slice — that field is now owned exclusively
+  // by advanceEconomy()'s causal demand/output chain (src/lib/economy/), and this
+  // RELATIONSHIPS array would otherwise double-count it independently. fdiFlow is
+  // untouched: it isn't part of this slice's migrated fields.
   {
     id: "insecurity_deters_investment",
     condition: (s) => s.securityIndex < 40,
-    effects: { fdiFlow: -1.5, gdpGrowth: -0.2 },
+    effects: { fdiFlow: -1.5 },
     description: "Widespread insecurity is deterring foreign investment",
   },
   {
     id: "stable_security_attracts_capital",
     condition: (s) => s.securityIndex > 70,
-    effects: { fdiFlow: 0.8, gdpGrowth: 0.15 },
+    effects: { fdiFlow: 0.8 },
     description: "Improved security is attracting foreign capital",
   },
 
-  // Inflation dynamics
+  // Inflation dynamics. Both rules correctly keep reading inflation to drive a
+  // political consequence (economy → approval, not the other way round) — that
+  // direction is retained. runaway_inflation's gdpGrowth component was retired for
+  // the same double-counting reason as above.
   {
     id: "high_inflation_erodes_approval",
     condition: (s) => s.inflation > 6,
@@ -111,7 +127,7 @@ export const RELATIONSHIPS: SimulationRule[] = [
   {
     id: "runaway_inflation",
     condition: (s) => s.inflation > 10,
-    effects: { approval: -4, gdpGrowth: -0.4, fdiFlow: -2.0 },
+    effects: { approval: -4, fdiFlow: -2.0 },
     description: "Inflation is destabilising the economy",
   },
 
@@ -147,11 +163,14 @@ export const RELATIONSHIPS: SimulationRule[] = [
     description: "Weak congressional coalition is slowing legislative agenda",
   },
 
-  // Debt dynamics
+  // Debt dynamics. The inflation component was retired — that field is now owned by
+  // advanceEconomy(). A debt-driven risk-premium/credibility channel feeding inflation
+  // pressure is a reasonable later addition to the causal engine itself, not to this
+  // threshold rule (deferred; see the V2 slice report).
   {
     id: "high_debt_market_pressure",
     condition: (s) => s.sovereignDebt > 95,
-    effects: { inflation: 0.2, fdiFlow: -1.0 },
+    effects: { fdiFlow: -1.0 },
     description: "High sovereign debt is pressuring markets",
   },
 
@@ -193,11 +212,16 @@ export const RELATIONSHIPS: SimulationRule[] = [
     description: "Unemployment is pushing workers into the informal economy",
   },
 
-  // Business registration feedback
+  // Business registration feedback. Both effects were retired — gdpGrowth and
+  // unemployment are now owned by advanceEconomy(), which has no input channel from
+  // business formation yet. Reintroducing this link (business formation feeding demand
+  // or productive capacity) is a reasonable later addition to the causal engine rather
+  // than this threshold rule; businessRegistrations itself is untouched and still
+  // tracked/displayed.
   {
     id: "business_formation_boosts_growth",
     condition: (s) => s.businessRegistrations > 5000,
-    effects: { gdpGrowth: 0.1, unemployment: -0.2 },
+    effects: {},
     description: "Strong business formation is generating economic momentum",
   },
 
@@ -318,6 +342,9 @@ export function deriveThreatLevelFromCapacity(
 export interface TurnTickResult {
   newState: GameState;
   triggeredRules: string[];
+  /** Causal attribution for this turn's demand pressure (src/lib/economy/) — not
+   *  persisted, kept for a future Explain surface. See advanceEconomy(). */
+  demandContributions: DemandContributions;
 }
 
 /**
@@ -394,10 +421,21 @@ export function runTurnTick(state: GameState): TurnTickResult {
     newState.businessRegistrations = Math.round(newState.businessRegistrations + 150);
   }
 
-  // Natural drift toward baselines
-  newState.inflation = driftToward(newState.inflation, 4.0, 0.15);
-  newState.unemployment = driftToward(newState.unemployment, 10.0, 0.1);
+  // Natural drift toward baselines (inflation/unemployment moved to the causal
+  // economy engine below — this is everything else that still uses a fixed pull).
   newState.internationalPressure = driftToward(newState.internationalPressure, 20, 0.5);
+
+  // Causal economy: fiscal stance → demand pressure → output gap → gdpGrowth/
+  // inflation/unemployment. This is the sole writer of these three fields from here
+  // on — see src/lib/economy/advanceEconomy.ts. Runs after the relationship rules,
+  // education cascades and drift above so it has the final, authoritative say each
+  // turn while still relaxing gradually from whatever those legacy inputs left behind,
+  // rather than fighting or silently overriding them.
+  const economyResult = advanceEconomy(newState);
+  newState.economyDynamics = economyResult.dynamics;
+  newState.gdpGrowth = economyResult.gdpGrowth;
+  newState.inflation = economyResult.inflation;
+  newState.unemployment = economyResult.unemployment;
 
   // Criminal organisations regenerate slowly if not actively pressured
   newState.criminalOrganisations = newState.criminalOrganisations.map((org) => {
@@ -421,10 +459,14 @@ export function runTurnTick(state: GameState): TurnTickResult {
   newState.civilLiberties = clamp0to100(newState.civilLiberties);
   newState.internationalPressure = clamp0to100(newState.internationalPressure);
   newState.mediaSentiment = clamp0to100(newState.mediaSentiment);
-  newState.inflation = Math.max(0, newState.inflation);
-  newState.unemployment = Math.max(0, newState.unemployment);
+  // inflation/unemployment bounds are enforced inside advanceEconomy() itself
+  // (EconomyCalibration.bounds) — no separate clamp needed here.
 
-  return { newState: roundGameStateNumbers(newState), triggeredRules: triggered };
+  return {
+    newState: roundGameStateNumbers(newState),
+    triggeredRules: triggered,
+    demandContributions: economyResult.demandContributions,
+  };
 }
 
 export interface FailureThreshold {

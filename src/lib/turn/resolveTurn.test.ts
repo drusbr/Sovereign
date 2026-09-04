@@ -86,3 +86,100 @@ test("does not mutate the original state", () => {
 test("equivalent deterministic inputs produce equivalent outputs", () => {
   assert.deepEqual(finish([action()]), finish([action()]));
 });
+
+// --- Advance Turn / no orders issued --------------------------------------
+// Declining to issue any presidential order is a legitimate strategic choice, not
+// an invalid input. resolveTurn must run the full deterministic turn pipeline with
+// an empty actions array — no fake action, no reduced simulation path.
+
+const noOrdersAiResult: TurnResult = {
+  narrative: "No new presidential orders were issued this week.",
+  effects: {},
+  organisationEffects: [],
+  stateSecurityChanges: [],
+  newOperation: null,
+  newProject: null,
+  situationSummary: "The situation is unchanged from the previous week.",
+  eventSummary: "No new orders were issued.",
+};
+
+test("resolveTurn succeeds with an empty actions array", () => {
+  const initial = createInitialGameState();
+  assert.doesNotThrow(() => resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult }));
+});
+
+test("an empty-order turn still advances turn number and date, and resets AP", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  assert.equal(draft.state.turn, initial.turn + 1);
+  assert.equal(draft.state.date, "January 15, 2026");
+  assert.equal(draft.state.actionPoints, 3);
+});
+
+test("an empty-order turn still runs the fiscal weekly close", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  // The seed fiscal state runs a recurring deficit, so one week's close should
+  // visibly accrue debt even with zero player actions.
+  assert.ok(draft.state.fiscal.publicDebt > initial.fiscal.publicDebt);
+});
+
+test("an empty-order turn still advances Economic Simulation V2", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  // advanceEconomy() ran and stamped this turn's fiscal-stance snapshot, proving the
+  // causal economy engine executed rather than being skipped for an empty turn.
+  assert.equal(draft.state.economyDynamics.previousFiscalStance.turn, draft.state.turn);
+  assert.ok(Number.isFinite(draft.state.gdpGrowth));
+  assert.ok(Number.isFinite(draft.state.inflation));
+  assert.ok(Number.isFinite(draft.state.unemployment));
+});
+
+test("an empty-order turn still progresses active project/operation lifecycles", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  const progressed = initial.projects.some((seed) => {
+    const advanced = draft.state.projects.find((p) => p.id === seed.id);
+    return advanced && advanced.lifecycle.spent > seed.lifecycle.spent;
+  });
+  assert.ok(progressed, "at least one seed project should have spent budget this turn with no player action needed");
+});
+
+test("an empty-order turn creates no fake action or fabricated history entry", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  assert.deepEqual(draft.turnRecord.actions, []);
+  assert.equal(draft.turnRecord.orders, "");
+  assert.deepEqual(draft.actionResolutions, []);
+});
+
+test("an empty-order turn does not require any mechanical LLM effects", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  // The supplied aiResult carried zero effects; nothing in the pipeline needed more
+  // than the deterministic no-op shape to produce a valid, advanced turn.
+  assert.deepEqual(draft.generatedEffects, {});
+});
+
+test("a READY Policy Development request does not block an empty-order turn from advancing", () => {
+  const initial = createInitialGameState();
+  const withReadyRequest = {
+    ...initial,
+    policyDevelopmentRequests: [
+      {
+        id: "policy-request-1-1",
+        rawInstruction: "Reduce inflation without sacrificing infrastructure investment.",
+        objectiveId: "REDUCE_INFLATION",
+        constraintIds: ["PRESERVE_INFRASTRUCTURE_INVESTMENT"],
+        status: "READY" as const,
+        options: [],
+        createdTurn: 1,
+        expiresOnTurn: 7,
+      },
+    ],
+  };
+  const draft = resolveTurn({ state: withReadyRequest, actions: [], aiResult: noOrdersAiResult });
+  assert.equal(draft.state.turn, withReadyRequest.turn + 1);
+  // Untouched — advancing time neither resolves nor discards it.
+  assert.equal(draft.state.policyDevelopmentRequests[0].status, "READY");
+});

@@ -58,6 +58,7 @@ import { acceptInterviewRequest, answerEncounter, declineInterviewRequest, expir
 import { generatePolicyRecommendations } from "@/lib/recommendations";
 import { compileDevelopedOption } from "@/lib/policyDevelopment/compile";
 import { createPolicyDevelopmentRequest, resolvePolicyDevelopmentRequest } from "@/lib/policyDevelopment/request";
+import { stripExternallyForbiddenEconomicEffects } from "@/lib/economy/types";
 
 export type InterpretationState = "checking" | "resolved" | "unknown";
 
@@ -279,76 +280,101 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const issueOrders = useCallback(
     async (actions: ProposedAction[]) => {
-      if (actions.length === 0) return;
-      const submittedActions = processInstitutionalActions(gameState, actions).map(
-        ({ action }) => action
-      );
+      // Issuing no orders is a legitimate presidential choice — the President may
+      // advance a week without acting. It still goes through the normal turn engine
+      // (resolveTurn) below; the only thing that's skipped is the LLM order-
+      // interpretation call, since there is nothing for it to interpret or narrate.
+      const isEmptyTurn = actions.length === 0;
+      const submittedActions = isEmptyTurn
+        ? []
+        : processInstitutionalActions(gameState, actions).map(({ action }) => action);
       const combinedOrders = submittedActions
         .map((action) => action.rawOrder.trim())
         .filter(Boolean)
         .join("\n");
-      if (!combinedOrders) return;
+      if (!isEmptyTurn && !combinedOrders) return;
 
       setIsLoading(true);
       setError(null);
 
       try {
         const current = gameState;
-        const executablePreviewActions = processInstitutionalActions(current, submittedActions)
-          .filter((item) => item.disposition === "EXECUTABLE")
-          .map((item) => item.action);
-        const lifecyclePreview = processLifecycleTurn(
-          createLifecycleEntities(current, executablePreviewActions),
-          current.turn
-        );
+        let aiResult: AITurnResult & { actions?: ProposedAction[] };
 
-        // --- Step 8: order resolution — structured Gemini response ---------
-        const res = await fetch("/api/turn", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            actions: submittedActions,
-            context: {
-              countryName: current.countryName,
-              playerTitle: current.playerTitle,
-              turn: current.turn,
-              date: current.date,
-              approval: current.approval,
-              securityIndex: current.securityIndex,
-              gdpGrowth: current.gdpGrowth,
-              inflation: current.inflation,
-              congressionalSupport: current.congressionalSupport,
-              militaryMorale: current.militaryMorale,
-              civilLiberties: current.civilLiberties,
-              internationalPressure: current.internationalPressure,
-              fdiFlow: current.fdiFlow,
-              unemployment: current.unemployment,
-              businessRegistrations: current.businessRegistrations,
-              creditRating: current.creditRating,
-              criminalOrganisations: current.criminalOrganisations.map((o) => ({
-                id: o.id,
-                shortName: o.shortName,
-                capacity: o.capacity,
-                threatLevel: o.threatLevel,
-              })),
-              recentEvents: current.history.slice(-5).map((h) => ({
-                turn: h.turn,
-                date: h.date,
-                summary: h.eventSummary,
-              })),
-              president: buildPresidentContext(current),
-              lifecycleFacts: lifecyclePreview.reports,
-            },
-          }),
-        });
+        if (isEmptyTurn) {
+          // Deterministic no-op TurnResult — the smallest shape resolveTurn already
+          // accepts. No mechanical effects are invented; the causal simulation
+          // (fiscal close, Economic Simulation V2, lifecycle progress, etc.) still
+          // runs in full inside resolveTurn/finalizeTurn below.
+          aiResult = {
+            narrative:
+              "No new presidential orders were issued this week. The government continued executing existing policy, programmes, and operations.",
+            effects: {},
+            organisationEffects: [],
+            stateSecurityChanges: [],
+            newOperation: null,
+            newProject: null,
+            situationSummary: current.situation,
+            eventSummary: "No new orders were issued.",
+          };
+        } else {
+          const executablePreviewActions = processInstitutionalActions(current, submittedActions)
+            .filter((item) => item.disposition === "EXECUTABLE")
+            .map((item) => item.action);
+          const lifecyclePreview = processLifecycleTurn(
+            createLifecycleEntities(current, executablePreviewActions),
+            current.turn
+          );
 
-        const data = await res.json();
+          // --- Step 8: order resolution — structured Gemini response ---------
+          const res = await fetch("/api/turn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actions: submittedActions,
+              context: {
+                countryName: current.countryName,
+                playerTitle: current.playerTitle,
+                turn: current.turn,
+                date: current.date,
+                approval: current.approval,
+                securityIndex: current.securityIndex,
+                gdpGrowth: current.gdpGrowth,
+                inflation: current.inflation,
+                congressionalSupport: current.congressionalSupport,
+                militaryMorale: current.militaryMorale,
+                civilLiberties: current.civilLiberties,
+                internationalPressure: current.internationalPressure,
+                fdiFlow: current.fdiFlow,
+                unemployment: current.unemployment,
+                businessRegistrations: current.businessRegistrations,
+                creditRating: current.creditRating,
+                criminalOrganisations: current.criminalOrganisations.map((o) => ({
+                  id: o.id,
+                  shortName: o.shortName,
+                  capacity: o.capacity,
+                  threatLevel: o.threatLevel,
+                })),
+                recentEvents: current.history.slice(-5).map((h) => ({
+                  turn: h.turn,
+                  date: h.date,
+                  summary: h.eventSummary,
+                })),
+                president: buildPresidentContext(current),
+                lifecycleFacts: lifecyclePreview.reports,
+              },
+            }),
+          });
 
-        if (!res.ok) {
-          throw new Error(data.error ?? "Something went wrong.");
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.error ?? "Something went wrong.");
+          }
+
+          aiResult = data as AITurnResult & { actions?: ProposedAction[] };
         }
 
-        const aiResult = data as AITurnResult & { actions?: ProposedAction[] };
         const resolvedActions = aiResult.actions ?? submittedActions;
         const approvalChange = aiResult.effects?.approval ?? 0;
         const securityIndexChange = aiResult.effects?.securityIndex ?? 0;
@@ -518,13 +544,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
           // fall back to the pre-authored consequenceNarrative
         }
 
+        // World events are not a second authoritative writer of the causal-economy
+        // fields or of sovereignDebt (whose sole source of truth is FiscalState.debtToGDP,
+        // mirrored every turn by closeFiscalWeek) — strip them before applying, rather
+        // than editing every hand-authored event definition in eventGenerator.ts.
         const effected = applyNumericEffects(
           {
             ...current,
             worldEvents: current.worldEvents.map((e) => ({ ...e })),
             resolvedWorldEvents: [...current.resolvedWorldEvents],
           },
-          option.effects
+          stripExternallyForbiddenEconomicEffects(option.effects)
         );
 
         const resolvedEvent: WorldEvent = {

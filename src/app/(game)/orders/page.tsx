@@ -113,8 +113,10 @@ export default function OrdersPage() {
   }
 
   async function handleExecuteTurn() {
+    // With no pending orders this advances the turn with an empty action list —
+    // declining to issue new orders is itself a legitimate presidential choice, not
+    // an invalid input.
     if (
-      pendingOrders.length === 0 ||
       isLoading ||
       pendingOrders.some((order) => order.interpretationState === "checking")
     ) return;
@@ -219,20 +221,23 @@ export default function OrdersPage() {
             <button
               type="button"
               onClick={handleExecuteTurn}
-              disabled={pendingOrders.length === 0 || isLoading || isInterpreting}
+              disabled={isLoading || isInterpreting}
               className="mt-4 w-full rounded-md bg-accent px-4 py-3 text-sm font-bold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-text-muted"
             >
               {isLoading
                 ? "Deliberating…"
                 : isInterpreting
                   ? "Checking institutional authority…"
-                : `Execute Turn (${pendingOrders.length} order${
-                    pendingOrders.length === 1 ? "" : "s"
-                  })`}
+                  : pendingOrders.length === 0
+                    ? "Advance Turn"
+                    : `Execute Turn (${pendingOrders.length} order${
+                        pendingOrders.length === 1 ? "" : "s"
+                      })`}
             </button>
             <p className="mt-2 text-[11px] text-text-muted">
-              All orders will be submitted together and resolved as a single
-              government session.
+              {pendingOrders.length === 0
+                ? "Advance one week without issuing new presidential orders."
+                : "All orders will be submitted together and resolved as a single government session."}
             </p>
           </div>
         </div>

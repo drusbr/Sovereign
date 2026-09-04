@@ -16,6 +16,7 @@ import type { EventFact } from "@/lib/eventFacts";
 import type { InteractiveEncounter } from "@/lib/encounters";
 import type { PolicyRecommendation } from "@/lib/recommendations";
 import type { PolicyDevelopmentRequest } from "@/lib/policyDevelopment/types";
+import { createInitialEconomyDynamics, type EconomyDynamics } from "@/lib/economy/types";
 
 export interface PolicyImplementation { id: string; proceedingId: string; actionId: string; title: string; status: "IMPLEMENTATION_PHASE" | "FUNDING_RELEASED" | "ACTIVE" | "COMPLETED" | "BLOCKED"; startedTurn: number; expectedCompletionTurn: number; responsibleInstitution: string; departmentsAffected: number | null; expectedAnnualFiscalImpact: number | null; linkedProjectIds: string[]; linkedOperationIds: string[]; summary: string; }
 
@@ -385,6 +386,10 @@ export interface GameState {
   /** Government-developed policy alternatives for a strategic presidential objective.
    *  Country Knowledge itself is never duplicated here — only ids and generated text. */
   policyDevelopmentRequests: PolicyDevelopmentRequest[];
+  /** Internal causal-economy simulation machinery (src/lib/economy/) — pressure/momentum
+   *  state, not a player-facing dashboard. gdpGrowth/inflation/unemployment remain the
+   *  canonical player-visible fields; this is what produces their deltas each turn. */
+  economyDynamics: EconomyDynamics;
 }
 
 const START_DATE = new Date(Date.UTC(2026, 0, 8)); // January 8th 2026
@@ -859,6 +864,7 @@ export function createInitialGameState(): GameState {
     },
     educationHistory: [49, 49, 49, 49, 49, 49, 49],
     policyDevelopmentRequests: [],
+    economyDynamics: createInitialEconomyDynamics(1),
   };
 }
 
@@ -891,6 +897,7 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     encounters: saved.encounters ?? [],
     policyImplementations: saved.policyImplementations ?? [],
     policyDevelopmentRequests: saved.policyDevelopmentRequests ?? [],
+    economyDynamics: saved.economyDynamics ?? createInitialEconomyDynamics(saved.turn ?? defaults.turn),
     policyRecommendations: saved.policyRecommendations ?? [],
     // Backfill education metrics for saves that predate this system
     education: !saved.education

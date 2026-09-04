@@ -1,7 +1,15 @@
 import { BRAZIL_STATE_NAMES } from "@/lib/brazilStates";
 import { ADVISORS, getAdvisorById, type AdvisorDefinition } from "@/lib/advisors";
 import type { NumericStatKey } from "@/lib/simulationEngine";
+import type { EconomyOwnedMacroKey } from "@/lib/economy/types";
 import type { ProposedAction } from "@/lib/actions/types";
+
+/**
+ * The LLM's effects schema is NumericStatKey minus the fields the causal economy
+ * engine now owns exclusively (src/lib/economy/) — gdpGrowth/inflation/unemployment
+ * are determined by deterministic fiscal transmission, never by narrative interpretation.
+ */
+type LlmEffectKey = Exclude<NumericStatKey, EconomyOwnedMacroKey>;
 
 const CRIMINAL_ORG_IDS = ["pcc", "cv", "militias", "gde", "fdn"];
 
@@ -44,9 +52,11 @@ Guidelines for effect magnitudes:
 - Crisis-level orders (declarations of emergency, major reforms): approval ±5-12, relevant stats ±8-20
 - Never change any stat by more than 25 in a single turn
 
-Consider realistic trade-offs. Military crackdowns should improve securityIndex but harm civilLiberties and increase internationalPressure. Economic stimulus should boost gdpGrowth but potentially worsen inflation. Populist announcements should boost approval short-term but may harm other indicators.
+Consider realistic trade-offs. Military crackdowns should improve securityIndex but harm civilLiberties and increase internationalPressure. Populist announcements should boost approval short-term but may harm other indicators.
 
-Consider the current game state — a country with high inflation reacts differently to fiscal announcements than a stable one. A country with weak congressional support cannot pass major reforms without concessions that show up in the effects.
+Consider the current game state — a country with weak congressional support cannot pass major reforms without concessions that show up in the effects.
+
+Do not return numeric effects for gdpGrowth, inflation, or unemployment — those are not in the effects schema below. A deterministic economic simulation determines those from the fiscal and policy consequences of enacted actions over time; you may still describe expected or perceived economic consequences narratively (e.g. "economists warn this could fuel inflation"), but you must never set the numbers yourself.
 
 Include organisationEffects only if the order specifically targets or affects a criminal organisation — use only these exact ids: ${CRIMINAL_ORG_IDS.join(", ")}. Include stateSecurityChanges only if the order specifically operates in named states — use only these exact state names: ${BRAZIL_STATE_NAMES.join(", ")}, and newStatus must be one of "stable", "elevated", or "critical". Set newOperation only if the order creates a new named federal operation, as { "name": string, "type": "military" | "police" | "intelligence" | "judicial", "location": string, "objective": string, "leadAgency": string }. Set newProject only if the order launches a formal government initiative, as { "name": string, "category": "Security" | "Economic" | "Infrastructure" | "Social" | "Diplomatic", "durationTurns": <integer 2-20>, "statusText": string, "unlocks": string }. The other fields can be null or empty arrays if not applicable.
 
@@ -56,14 +66,11 @@ Always respond with strict JSON matching this exact shape, and nothing else:
   "effects": {
     "approval": 0,
     "securityIndex": 0,
-    "gdpGrowth": 0,
-    "inflation": 0,
     "congressionalSupport": 0,
     "militaryMorale": 0,
     "civilLiberties": 0,
     "internationalPressure": 0,
     "fdiFlow": 0,
-    "unemployment": 0,
     "businessRegistrations": 0
   },
   "organisationEffects": [ { "id": "pcc", "capacityChange": 0 } ],
@@ -239,7 +246,7 @@ export interface NewProjectSpec {
 
 export interface TurnResult {
   narrative: string;
-  effects: Partial<Record<NumericStatKey, number>>;
+  effects: Partial<Record<LlmEffectKey, number>>;
   organisationEffects: OrganisationEffect[];
   stateSecurityChanges: StateSecurityChange[];
   newOperation: NewOperationSpec | null;
@@ -248,17 +255,16 @@ export interface TurnResult {
   eventSummary: string;
 }
 
-const EFFECT_KEYS: NumericStatKey[] = [
+// gdpGrowth/inflation/unemployment are deliberately absent — the causal economy
+// engine (src/lib/economy/) owns them exclusively; see LlmEffectKey above.
+const EFFECT_KEYS: LlmEffectKey[] = [
   "approval",
   "securityIndex",
-  "gdpGrowth",
-  "inflation",
   "congressionalSupport",
   "militaryMorale",
   "civilLiberties",
   "internationalPressure",
   "fdiFlow",
-  "unemployment",
   "businessRegistrations",
 ];
 
@@ -272,9 +278,9 @@ function clampEffectValue(value: unknown): number {
   return Math.max(-25, Math.min(25, n));
 }
 
-function parseEffects(raw: unknown): Partial<Record<NumericStatKey, number>> {
+function parseEffects(raw: unknown): Partial<Record<LlmEffectKey, number>> {
   const rec = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  const out: Partial<Record<NumericStatKey, number>> = {};
+  const out: Partial<Record<LlmEffectKey, number>> = {};
   for (const key of EFFECT_KEYS) {
     if (typeof rec[key] === "number") {
       out[key] = clampEffectValue(rec[key]);
@@ -866,19 +872,20 @@ export function parseSpinRoomResponse(raw: string): SpinRoomResult {
 // World events — random-seed detail generation + optional novel event
 // ---------------------------------------------------------------------------
 
+// gdpGrowth/inflation/unemployment/sovereignDebt are deliberately absent — the causal
+// economy engine (src/lib/economy/) owns the macro three exclusively, and sovereignDebt's
+// sole source of truth is FiscalState.debtToGDP (see stripExternallyForbiddenEconomicEffects,
+// applied a second time at the world-event application point in GameContext.tsx since
+// this list only constrains LLM-*generated* novel events, not the pre-authored ones).
 const EVENT_EFFECT_KEYS = [
   "approval",
   "securityIndex",
-  "gdpGrowth",
-  "inflation",
   "congressionalSupport",
   "militaryMorale",
   "civilLiberties",
   "internationalPressure",
   "fdiFlow",
-  "unemployment",
   "businessRegistrations",
-  "sovereignDebt",
   "publicInvestment",
   "mediaSentiment",
   "globalStanding",
