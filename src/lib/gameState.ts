@@ -15,6 +15,7 @@ import type { LifecycleTurnReport } from "@/lib/operationsProjectsEngine";
 import type { EventFact } from "@/lib/eventFacts";
 import type { InteractiveEncounter } from "@/lib/encounters";
 import type { PolicyRecommendation } from "@/lib/recommendations";
+import type { PolicyDevelopmentRequest } from "@/lib/policyDevelopment/types";
 
 export interface PolicyImplementation { id: string; proceedingId: string; actionId: string; title: string; status: "IMPLEMENTATION_PHASE" | "FUNDING_RELEASED" | "ACTIVE" | "COMPLETED" | "BLOCKED"; startedTurn: number; expectedCompletionTurn: number; responsibleInstitution: string; departmentsAffected: number | null; expectedAnnualFiscalImpact: number | null; linkedProjectIds: string[]; linkedOperationIds: string[]; summary: string; }
 
@@ -381,6 +382,9 @@ export interface GameState {
   // Education metrics
   education: EducationState;
   educationHistory: number[]; // tracks educationIndex over last 7 turns for sparkline
+  /** Government-developed policy alternatives for a strategic presidential objective.
+   *  Country Knowledge itself is never duplicated here — only ids and generated text. */
+  policyDevelopmentRequests: PolicyDevelopmentRequest[];
 }
 
 const START_DATE = new Date(Date.UTC(2026, 0, 8)); // January 8th 2026
@@ -854,6 +858,7 @@ export function createInitialGameState(): GameState {
       pisaHistory: Array(20).fill(401),
     },
     educationHistory: [49, 49, 49, 49, 49, 49, 49],
+    policyDevelopmentRequests: [],
   };
 }
 
@@ -885,6 +890,7 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     advisors: saved.advisors ?? defaults.advisors,
     encounters: saved.encounters ?? [],
     policyImplementations: saved.policyImplementations ?? [],
+    policyDevelopmentRequests: saved.policyDevelopmentRequests ?? [],
     policyRecommendations: saved.policyRecommendations ?? [],
     // Backfill education metrics for saves that predate this system
     education: !saved.education

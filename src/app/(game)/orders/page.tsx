@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useGame } from "@/context/GameContext";
 import { TurnHistoryCard } from "@/components/orders/TurnHistoryCard";
-import {
-  PendingOrderCard,
-  type PendingOrder,
-} from "@/components/orders/PendingOrderCard";
+import { PendingOrderCard } from "@/components/orders/PendingOrderCard";
 import {
   canonicalActorIdForCountry,
   createDraftAction,
@@ -27,9 +25,21 @@ function makeOrderId(): string {
 }
 
 export default function OrdersPage() {
-  const { gameState, isLoading, error, lastResult, issueOrders } = useGame();
+  const {
+    gameState,
+    isLoading,
+    error,
+    lastResult,
+    issueOrders,
+    pendingOrders,
+    queuePendingAction,
+    updatePendingAction,
+    removePendingAction,
+    clearPendingActions,
+    requestPolicyDevelopment,
+  } = useGame();
   const [draft, setDraft] = useState("");
-  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [policyNotice, setPolicyNotice] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -41,29 +51,19 @@ export default function OrdersPage() {
 
   function updateInterpretedAction(id: string, action: ProposedAction | null) {
     if (!mountedRef.current) return;
-    setPendingOrders((prev) =>
-      prev.map((order) => {
-        if (order.action.id !== id) return order;
-        if (!action) {
-          const fallback = inferExplicitFiscalAction(order.action) ?? inferExplicitLegislativeAction(order.action);
-          if (fallback) {
-            return {
-              action: applyActionValidation(gameState, fallback),
-              interpretationState: "resolved",
-            };
-          }
-          const unknown = applyActionValidation(gameState, {
-            ...order.action,
-            status: "PROPOSED",
-          });
-          return { action: unknown, interpretationState: "unknown" };
-        }
-        return {
-          action: applyActionValidation(gameState, action),
-          interpretationState: "resolved",
-        };
-      })
-    );
+    const order = pendingOrders.find((item) => item.action.id === id);
+    if (!order) return;
+    if (!action) {
+      const fallback = inferExplicitFiscalAction(order.action) ?? inferExplicitLegislativeAction(order.action);
+      if (fallback) {
+        updatePendingAction(id, applyActionValidation(gameState, fallback), "resolved");
+        return;
+      }
+      const unknown = applyActionValidation(gameState, { ...order.action, status: "PROPOSED" });
+      updatePendingAction(id, unknown, "unknown");
+      return;
+    }
+    updatePendingAction(id, applyActionValidation(gameState, action), "resolved");
   }
 
   function interpretAction(action: ProposedAction) {
@@ -89,21 +89,27 @@ export default function OrdersPage() {
   function handleAddToAgenda() {
     const text = draft.trim();
     if (!text) return;
+    // A strategic objective (e.g. "reduce inflation without sacrificing infrastructure
+    // investment") is not an executable order — route it to policy development instead
+    // of queuing a draft that would just come back BLOCKED/UNKNOWN.
+    if (requestPolicyDevelopment(text)) {
+      setPolicyNotice(text);
+      setDraft("");
+      return;
+    }
+    setPolicyNotice(null);
     const action = createDraftAction({
       id: makeOrderId(),
       actorId: canonicalActorIdForCountry(gameState.countryName),
       rawOrder: text,
     });
-    setPendingOrders((prev) => [
-      ...prev,
-      { action, interpretationState: "checking" },
-    ]);
+    queuePendingAction(action, "checking");
     setDraft("");
     interpretAction(action);
   }
 
   function handleRemove(id: string) {
-    setPendingOrders((prev) => prev.filter((o) => o.action.id !== id));
+    removePendingAction(id);
   }
 
   async function handleExecuteTurn() {
@@ -113,7 +119,7 @@ export default function OrdersPage() {
       pendingOrders.some((order) => order.interpretationState === "checking")
     ) return;
     await issueOrders(pendingOrders.map((order) => order.action));
-    if (mountedRef.current) setPendingOrders([]);
+    if (mountedRef.current) clearPendingActions();
   }
 
   // Exclude only the record currently shown in the briefing panel above (matched by
@@ -163,6 +169,17 @@ export default function OrdersPage() {
           <p className="text-xs text-text-muted">
             Write one order at a time. Build your full agenda before executing.
           </p>
+          {policyNotice && (
+            <div className="rounded-md border border-accent/30 bg-accent/5 px-4 py-3 text-sm text-text">
+              Your economic team is preparing policy options for:{" "}
+              <span className="italic">&ldquo;{policyNotice}&rdquo;</span>. Review the
+              developed alternatives under{" "}
+              <Link href="/advisors" className="font-semibold text-accent underline underline-offset-2">
+                Advisers → Policy Development
+              </Link>
+              .
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 lg:w-[40%]">

@@ -8,6 +8,7 @@ import { getAdvisorsFromState } from "@/lib/advisors";
 import { AdvisorCard } from "@/components/advisors/AdvisorCard";
 import { AdvisorPanel } from "@/components/advisors/AdvisorPanel";
 import { CabinetRoom } from "@/components/advisors/CabinetRoom";
+import { PolicyDevelopmentSection } from "@/components/advisors/PolicyDevelopmentSection";
 import { PageHeader } from "@/components/PageHeader";
 import { generatePolicyRecommendations } from "@/lib/recommendations";
 
@@ -71,6 +72,8 @@ export default function AdvisorsPage() {
           return <div key={item.id} className="border-t border-border py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-text">{item.title}</p><p className="mt-1 text-xs leading-5 text-text-muted">{item.rationale}</p></div><span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-brass">{item.difficulty}</span></div><p className="mt-2 text-xs text-text"><span className="text-text-muted">{advisor?.name ?? "Cabinet"}: </span>{item.action}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-text-muted">Required institution: {item.institution}</p></div>;
         })}</div>
       </section>
+
+      <PolicyDevelopmentSection />
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {advisors.map((advisor) => {

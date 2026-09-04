@@ -56,6 +56,18 @@ import {
 import { applyEventPipeline } from "@/lib/eventPipeline";
 import { acceptInterviewRequest, answerEncounter, declineInterviewRequest, expireEncounters, startEncounter } from "@/lib/encounters";
 import { generatePolicyRecommendations } from "@/lib/recommendations";
+import { compileDevelopedOption } from "@/lib/policyDevelopment/compile";
+import { createPolicyDevelopmentRequest, resolvePolicyDevelopmentRequest } from "@/lib/policyDevelopment/request";
+
+export type InterpretationState = "checking" | "resolved" | "unknown";
+
+/** Shared pending-action queue item. Typed orders arrive "checking" while the LLM
+ *  interpretation round-trip is in flight; policy-development-compiled actions arrive
+ *  already "resolved" since compilation fully resolves actionType/authority/parameters. */
+export interface PendingOrder {
+  action: ProposedAction;
+  interpretationState: InterpretationState;
+}
 
 export interface TurnResult {
   narrative: string;
@@ -108,6 +120,21 @@ interface GameContextValue {
   saveStatus: "idle" | "saving" | "saved" | "error";
   manageLegislation: (proceedingId: string, action: CongressAction) => Promise<string>;
   cancelLifecycle: (entityId: string) => Promise<void>;
+  /** Shared pending-action queue — typed orders (Orders page) and policy-development-
+   *  compiled actions (Advisers) both land here for review before issueOrders. */
+  pendingOrders: PendingOrder[];
+  queuePendingAction: (action: ProposedAction, interpretationState?: InterpretationState) => void;
+  queuePendingActions: (actions: ProposedAction[], interpretationState?: InterpretationState) => void;
+  updatePendingAction: (id: string, action: ProposedAction, interpretationState: InterpretationState) => void;
+  removePendingAction: (id: string) => void;
+  clearPendingActions: () => void;
+  /** Detects a strategic objective in raw order text and, if recognised, creates and
+   *  develops a PolicyDevelopmentRequest instead of a draft order. Returns whether a
+   *  request was created — the caller uses this to branch its own UI. */
+  requestPolicyDevelopment: (rawInstruction: string) => boolean;
+  /** Compiles the selected option into ProposedAction(s), queues them in the shared
+   *  pending-action queue, and marks the request RESOLVED. */
+  selectPolicyOption: (requestId: string, optionId: string) => void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -215,6 +242,40 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [worldEventResponseError, setWorldEventResponseError] = useState<string | null>(
     null
   );
+
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+
+  const queuePendingAction = useCallback(
+    (action: ProposedAction, interpretationState: InterpretationState = "resolved") => {
+      setPendingOrders((prev) => [...prev, { action, interpretationState }]);
+    },
+    []
+  );
+
+  const queuePendingActions = useCallback(
+    (actions: ProposedAction[], interpretationState: InterpretationState = "resolved") => {
+      if (actions.length === 0) return;
+      setPendingOrders((prev) => [...prev, ...actions.map((action) => ({ action, interpretationState }))]);
+    },
+    []
+  );
+
+  const updatePendingAction = useCallback(
+    (id: string, action: ProposedAction, interpretationState: InterpretationState) => {
+      setPendingOrders((prev) =>
+        prev.map((order) => (order.action.id === id ? { action, interpretationState } : order))
+      );
+    },
+    []
+  );
+
+  const removePendingAction = useCallback((id: string) => {
+    setPendingOrders((prev) => prev.filter((order) => order.action.id !== id));
+  }, []);
+
+  const clearPendingActions = useCallback(() => {
+    setPendingOrders([]);
+  }, []);
 
   const issueOrders = useCallback(
     async (actions: ProposedAction[]) => {
@@ -707,6 +768,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
     else if (isGuest && typeof window !== "undefined") window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(next));
   }, [user, campaignId, isGuest]);
 
+  const requestPolicyDevelopment = useCallback(
+    (rawInstruction: string): boolean => {
+      const request = createPolicyDevelopmentRequest(gameState, rawInstruction);
+      if (!request) return false;
+      const next = {
+        ...gameState,
+        policyDevelopmentRequests: [...gameState.policyDevelopmentRequests, request],
+      };
+      setGameState(next);
+      persistEncounterProgress(next);
+      return true;
+    },
+    [gameState, persistEncounterProgress]
+  );
+
+  const selectPolicyOption = useCallback(
+    (requestId: string, optionId: string) => {
+      const request = gameState.policyDevelopmentRequests.find((item) => item.id === requestId);
+      const option = request?.options.find((item) => item.id === optionId);
+      if (!request || !option) return;
+      const compiled = compileDevelopedOption(option, request, gameState);
+      const resolvedState = resolvePolicyDevelopmentRequest(gameState, requestId, optionId);
+      setGameState(resolvedState);
+      persistEncounterProgress(resolvedState);
+      queuePendingActions(compiled);
+    },
+    [gameState, persistEncounterProgress, queuePendingActions]
+  );
+
   const acceptInterview = useCallback(
     (id: string) => setGameState((current) => { const next = acceptInterviewRequest(current, id); persistEncounterProgress(next); return next; }),
     [persistEncounterProgress]
@@ -753,6 +843,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         saveStatus,
         manageLegislation,
         cancelLifecycle,
+        pendingOrders,
+        queuePendingAction,
+        queuePendingActions,
+        updatePendingAction,
+        removePendingAction,
+        clearPendingActions,
+        requestPolicyDevelopment,
+        selectPolicyOption,
       }}
     >
       {children}

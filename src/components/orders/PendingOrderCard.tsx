@@ -1,12 +1,6 @@
 import { AlertTriangle, GripVertical, X } from "lucide-react";
-import type { AuthorityType, ProposedAction } from "@/lib/actions/types";
-
-export type InterpretationState = "checking" | "resolved" | "unknown";
-
-export interface PendingOrder {
-  action: ProposedAction;
-  interpretationState: InterpretationState;
-}
+import type { AuthorityType } from "@/lib/actions/types";
+import type { PendingOrder } from "@/context/GameContext";
 
 const AUTHORITY_STYLES: Record<AuthorityType, { label: string; className: string }> = {
   EXECUTIVE: { label: "Executive Authority", className: "border-positive/30 bg-positive/10 text-positive" },
