@@ -85,6 +85,9 @@ test("both chambers can pass and retain the associated action id", () => {
   assert.equal(bill.status, "PASSED");
   assert.equal(bill.actionId, "passing-bill");
   assert.equal(bill.actionResolution.status, "EXECUTED");
+  assert.equal(result.state.policyImplementations.length, 1);
+  assert.equal(result.state.policyImplementations[0].proceedingId, bill.id);
+  assert.match(result.state.policyImplementations[0].summary, /authority obtained/i);
 });
 
 test("voting is reproducible for identical state and proceeding", () => {

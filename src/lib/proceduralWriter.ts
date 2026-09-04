@@ -73,7 +73,17 @@ function projectCopy(candidate: StoryCandidate, variant: number) {
     security: [`${name} Advances Training and Deployment`, "Security Programme Reaches Implementation Milestone", `${name} Moves Closer to Operational Readiness`],
     government: [`${name} Reaches Major Delivery Stage`, `Implementation Advances on ${name}`, `${name} Moves Into Next Phase`],
   };
-  return { headline: headlines[domain][variant], body: `The ${noun} has reached ${m.milestone}% delivery. Expenditure to date is ${money(m.spent)} against an authorised budget of ${money(m.budget)}.` };
+  const stage = Number(m.milestone) >= 75 ? "final delivery stage" : Number(m.milestone) >= 50 ? "main implementation phase" : "first major delivery phase";
+  const bodies = domain === "infrastructure"
+    ? [`Construction has entered its ${stage}, with contractors reporting ${m.milestone}% of planned works delivered. ${money(m.spent)} has been disbursed from the ${money(m.budget)} authorised envelope.`, `Works on ${name} have moved beyond the ${m.milestone}% mark. Treasury records show ${money(m.spent)} spent, leaving the remaining commitment tied to the next construction phase.`, `${name} cleared a major engineering milestone as physical delivery reached ${m.milestone}%. Spending now stands at ${money(m.spent)} of the approved ${money(m.budget)}.`]
+    : domain === "education"
+      ? [`The programme is extending delivery to its next group of schools after reaching ${m.milestone}% implementation. Recorded spending is ${money(m.spent)} from an authorised ${money(m.budget)}.`, `${name} has moved into its ${stage}, expanding training and classroom delivery rather than merely completing administrative setup. Expenditure totals ${money(m.spent)}.`, `Education officials report that ${name} is now ${m.milestone}% implemented. The next phase shifts attention toward delivery outcomes under the remaining budget commitment.`]
+      : domain === "health"
+        ? [`Health-service rollout has reached ${m.milestone}%, moving the programme into its ${stage}. Federal expenditure totals ${money(m.spent)}.`, `${name} has expanded operational delivery as implementation passed ${m.milestone}%. ${money(m.spent)} of the ${money(m.budget)} allocation has entered the accounts.`, `The health programme cleared its latest service-delivery threshold. Implementation stands at ${m.milestone}% with remaining funds reserved for the next rollout phase.`]
+        : domain === "security"
+          ? [`Training, procurement and deployment readiness have reached ${m.milestone}% under ${name}. Expenditure stands at ${money(m.spent)} against ${money(m.budget)} authorised.`, `${name} entered its next operational-readiness phase after passing ${m.milestone}% implementation. Officials are now shifting from setup toward deployment capability.`, `Federal security authorities report ${m.milestone}% programme delivery, with ${money(m.spent)} committed to readiness and institutional capacity.`]
+          : [`${name} entered its ${stage} at ${m.milestone}% delivery. Recorded expenditure is ${money(m.spent)} against an authorised ${money(m.budget)}.`, `Implementation advanced beyond the latest milestone, shifting responsibility toward the next delivery stage. Spending now totals ${money(m.spent)}.`, `Federal administrators report ${m.milestone}% delivery on ${name}; the remaining commitment will finance the next implementation phase.`];
+  return { headline: headlines[domain][variant], body: bodies[variant] };
 }
 
 function congressCopy(candidate: StoryCandidate, variant: number) {

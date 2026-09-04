@@ -23,7 +23,7 @@ export function ProjectCard({
 
   return (
     <div
-      className={`rounded-lg border bg-panel/60 p-4 ${
+      className={`border bg-panel/45 p-4 ${
         isCompleted ? "border-positive/30" : "border-border"
       }`}
     >
@@ -32,7 +32,7 @@ export function ProjectCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-text">{project.name}</h3>
             <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${style.text} ${style.bg} ${style.border}`}
+              className={`border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${style.text} ${style.bg} ${style.border}`}
             >
               {project.category}
             </span>

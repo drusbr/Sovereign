@@ -11,11 +11,15 @@ import { DiplomaticOpportunities } from "@/components/diplomacy/DiplomaticOpport
 import { DiplomaticCalendar } from "@/components/diplomacy/DiplomaticCalendar";
 import { DiplomaticRecord } from "@/components/diplomacy/DiplomaticRecord";
 import { fmtScore } from "@/lib/format";
+import { PageHeader } from "@/components/PageHeader";
+import { SecondaryNav } from "@/components/SecondaryNav";
+import { WorldMap, type CountrySelection } from "@/components/map/WorldMap";
 
 export default function DiplomacyPage() {
   const { gameState } = useGame();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [mapSelection, setMapSelection] = useState<CountrySelection>({ id: "BRA", isoA3: "BRA", name: "Brazil" });
 
   const selectedRelation =
     gameState.diplomaticRelations.find((r) => r.id === selectedId) ?? null;
@@ -27,22 +31,9 @@ export default function DiplomacyPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-            Diplomatic Situation Room
-          </p>
-          <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="text-lg font-semibold text-text">
-              {gameState.countryName}
-            </h1>
-            <span className="text-xs text-text-muted">{gameState.date}</span>
-          </div>
-        </div>
-
-        <span
-          className="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+    <div className="sovereign-page space-y-7">
+      <PageHeader eyebrow="World / Foreign Affairs" title="The World" description="Brazil's diplomatic position, external pressure and strategic openings." actions={<span
+          className="border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
           style={{
             color: standingColor,
             borderColor: `${standingColor}4d`,
@@ -50,12 +41,17 @@ export default function DiplomacyPage() {
           }}
         >
           Global Standing: {fmtScore(gameState.globalStanding)}
-        </span>
-      </div>
+        </span>} />
+      <SecondaryNav active="Strategic map" items={[{label:"Strategic map",href:"#map"},{label:"Bilateral relations",href:"#relations"},{label:"Diplomatic calendar",href:"#calendar"}]} />
+
+      <section id="map" className="border-y border-border bg-panel/25">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2 text-[10px] uppercase tracking-widest text-text-muted"><span>Global strategic picture</span><span>Selected: <b className="text-text">{mapSelection.name} · {mapSelection.isoA3 ?? mapSelection.id}</b></span></div>
+        <WorldMap selectedCountryId={mapSelection.id} onCountrySelect={setMapSelection} className="min-h-[360px]" />
+      </section>
 
       <KpiStrip gameState={gameState} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div id="relations" className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <BilateralRelations
             relations={gameState.diplomaticRelations}
@@ -73,10 +69,7 @@ export default function DiplomacyPage() {
         </div>
       </div>
 
-      <DiplomaticCalendar
-        events={gameState.upcomingDiplomaticEvents}
-        currentTurn={gameState.turn}
-      />
+      <div id="calendar"><DiplomaticCalendar events={gameState.upcomingDiplomaticEvents} currentTurn={gameState.turn} /></div>
 
       <DiplomaticRecord events={gameState.diplomaticEvents} />
 

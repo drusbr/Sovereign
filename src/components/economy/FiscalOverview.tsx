@@ -12,6 +12,12 @@ export function FiscalOverview({ gameState }: { gameState: GameState }) {
   const flows = currentTurnFiscalFlows(fiscal, gameState.turn);
   const policies = activeFiscalPolicies(fiscal);
   const commitments = fiscalCommitments(gameState);
+  const recentLedger = [...fiscal.ledger].reverse().slice(0, 30);
+  const debtExplanation = flows.net < 0
+    ? `This turn's recorded measures produced a net cash outflow of ${money(Math.abs(flows.net))}, adding to federal financing needs.`
+    : flows.net > 0
+      ? `This turn's recorded measures produced a net cash inflow of ${money(flows.net)}, reducing immediate financing needs.`
+      : "No policy-driven net cash movement was recorded this turn; the underlying annual deficit and interest expense still shape debt.";
   return <div className="space-y-6">
     <p className="text-xs leading-relaxed text-text-muted">Federal accounts · nominal Brazilian reais, billions · annual run-rate unless explicitly identified as current-turn cash flow</p>
     <section>
@@ -21,6 +27,16 @@ export function FiscalOverview({ gameState }: { gameState: GameState }) {
         <Stat label="Primary Balance" value={`${fiscal.primaryBalance >= 0 ? "+" : "−"}${money(fiscal.primaryBalance)}`} tone={fiscal.primaryBalance >= 0 ? "text-positive" : "text-danger"}/><Stat label="Overall Balance" value={`${fiscal.nominalBalance >= 0 ? "+" : "−"}${money(fiscal.nominalBalance)}`} tone={fiscal.nominalBalance >= 0 ? "text-positive" : "text-danger"}/>
         <Stat label="Public Debt" value={money(fiscal.publicDebt)}/><Stat label="Debt / GDP" value={`${fiscal.debtToGDP.toFixed(1)}%`} tone={fiscal.debtToGDP > 100 ? "text-danger" : "text-amber-400"}/><Stat label="Interest Expense" value={money(fiscal.interestExpense)}/><Stat label="Discretionary Capacity" value={money(fiscal.discretionaryBudgetAvailable)} tone="text-accent"/>
       </div>
+    </section>
+
+    {gameState.policyImplementations.filter((item) => item.expectedAnnualFiscalImpact !== null).length > 0 && <section>
+      <p className="mb-3 border-l-2 border-brass pl-3 text-[11px] font-semibold uppercase tracking-widest text-text">Enacted measures now in implementation</p>
+      <div className="divide-y divide-border border-y border-border bg-panel/25">{gameState.policyImplementations.filter((item) => item.expectedAnnualFiscalImpact !== null).map((item) => <div key={item.id} className="grid gap-2 px-4 py-3 text-xs md:grid-cols-[1fr_12rem_10rem]"><div><p className="font-medium text-text">{item.title}</p><p className="mt-1 text-text-muted">{item.summary}</p></div><span className="uppercase tracking-wider text-brass">{item.status.replaceAll("_", " ")}</span><span className={`tabular md:text-right ${Number(item.expectedAnnualFiscalImpact) >= 0 ? "text-positive" : "text-danger"}`}>{Number(item.expectedAnnualFiscalImpact) >= 0 ? "+" : "−"}R${Math.abs(Number(item.expectedAnnualFiscalImpact)).toFixed(1)}bn/year</span></div>)}</div>
+    </section>}
+
+    <section className="border-y border-border bg-panel/30 p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xs font-semibold uppercase tracking-wider text-text">Fiscal ledger</h3><p className="mt-1 max-w-2xl text-[11px] leading-5 text-text-muted">{debtExplanation} Expand an entry to see its legal or operational origin and funding treatment.</p></div><span className="tabular text-[11px] text-text-muted">Latest {recentLedger.length} postings</span></div>
+      <div className="mt-4 overflow-x-auto"><table className="sovereign-table min-w-[820px]"><thead><tr><th>Turn</th><th>Measure</th><th>Origin</th><th>Funding</th><th className="text-right">Annual effect</th><th className="text-right">Cash effect</th></tr></thead><tbody>{recentLedger.map((entry) => <tr key={entry.id}><td className="tabular">T{entry.turn}</td><td><details><summary className="cursor-pointer font-medium text-text">{entry.description}</summary><p className="mt-2 max-w-md text-[11px] leading-5 text-text-muted">Recorded as {label(entry.kind)} in {label(entry.category)}. Trace: {entry.originType === "LEGISLATION" ? "law enacted by Congress" : entry.originType === "PROJECT" ? "authorised government programme" : entry.originType === "OPERATION" ? "federal operation" : "presidential action"}.</p></details></td><td>{label(entry.originType)}</td><td>{label(entry.funding)}</td><td className={`tabular text-right ${entry.annualRunRateImpact >= 0 ? "text-positive" : "text-danger"}`}>{entry.annualRunRateImpact >= 0 ? "+" : "−"}{money(entry.annualRunRateImpact)}</td><td className={`tabular text-right ${entry.currentTurnCashImpact >= 0 ? "text-positive" : "text-danger"}`}>{entry.currentTurnCashImpact >= 0 ? "+" : "−"}{money(entry.currentTurnCashImpact)}</td></tr>)}</tbody></table>{recentLedger.length === 0 && <p className="py-8 text-center text-xs italic text-text-muted">The fiscal ledger contains no policy postings yet.</p>}</div>
     </section>
 
     <section className="rounded-lg border border-border bg-panel/60 p-4">

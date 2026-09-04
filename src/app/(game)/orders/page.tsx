@@ -16,6 +16,7 @@ import { applyActionValidation } from "@/lib/actions/validation";
 import { inferExplicitFiscalAction, inferExplicitLegislativeAction } from "@/lib/actions/interpretation";
 import { renderEvent } from "@/lib/proceduralWriter";
 import { fmtDelta, fmtDeltaPct } from "@/lib/format";
+import { PageHeader } from "@/components/PageHeader";
 
 const AUTHORITY_CHECK_DELAY_MS = 800;
 
@@ -129,20 +130,14 @@ export default function OrdersPage() {
   const briefingEvents = (latestRecord?.eventFactIds ?? [])
     .map((id) => gameState.eventHistory.find((event) => event.id === id))
     .filter((event): event is NonNullable<typeof event> => Boolean(event?.surfacedToPresident));
+  const readyCount = pendingOrders.filter((order) => order.action.authority.type === "EXECUTIVE" && order.action.status !== "BLOCKED").length;
+  const institutionalCount = pendingOrders.filter((order) => ["LEGISLATIVE", "JUDICIAL", "INDEPENDENT", "FOREIGN", "STATE_LOCAL"].includes(order.action.authority.type)).length;
+  const blockedCount = pendingOrders.filter((order) => order.action.status === "BLOCKED" && order.action.authority.type !== "LEGISLATIVE").length;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
-      <div className="border-b border-border pb-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-          Issue Presidential Orders
-        </p>
-        <div className="mt-1 flex items-baseline gap-3">
-          <h1 className="text-lg font-semibold text-text">
-            {gameState.countryName} — Turn {gameState.turn}
-          </h1>
-          <span className="text-xs text-text-muted">{gameState.date}</span>
-        </div>
-      </div>
+    <div className="sovereign-page flex flex-col gap-6">
+      <PageHeader eyebrow="Presidency" title="The Decision Desk" description="Draft the government's agenda, review institutional authority, then execute the session as one turn." meta={`${gameState.actionPoints} of 3 actions available`} />
+      <div className="grid grid-cols-3 border-y border-border text-center tabular"><div className="border-r border-border py-2"><span className="text-[10px] uppercase tracking-wider text-text-muted">Ready</span><b className="ml-2 text-positive">{readyCount}</b></div><div className="border-r border-border py-2"><span className="text-[10px] uppercase tracking-wider text-text-muted">Institutional process</span><b className="ml-2 text-amber-300">{institutionalCount}</b></div><div className="py-2"><span className="text-[10px] uppercase tracking-wider text-text-muted">Blocked</span><b className="ml-2 text-danger">{blockedCount}</b></div></div>
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex flex-col gap-3 lg:w-[60%]">
@@ -155,7 +150,7 @@ export default function OrdersPage() {
             disabled={isLoading}
             placeholder="Enter your orders, Mr. President..."
             rows={7}
-            className="w-full resize-y rounded-lg border border-border bg-panel px-4 py-3 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-60"
+            className="w-full resize-y border border-border bg-panel px-4 py-3 text-sm leading-6 text-text placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-60"
           />
           <button
             type="button"
@@ -177,7 +172,7 @@ export default function OrdersPage() {
             </h2>
           </div>
 
-          <div className="flex-1 rounded-lg border border-border bg-panel-2/60 p-4">
+          <div className="flex-1 border border-border bg-panel-2/60 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
                 Pending Orders

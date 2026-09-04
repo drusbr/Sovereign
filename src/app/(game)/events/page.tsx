@@ -12,6 +12,7 @@ import {
   isWorldFeedItem,
   requiresAttention,
 } from "@/lib/worldEvents";
+import { PageHeader } from "@/components/PageHeader";
 
 type TypeFilter = "all" | "domestic" | "international";
 
@@ -60,21 +61,8 @@ export default function EventsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-            World Events
-          </p>
-          <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="text-lg font-semibold text-text">
-              {gameState.countryName}
-            </h1>
-            <span className="text-xs text-text-muted">{gameState.date}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-panel-2 p-1">
+    <div className="sovereign-page space-y-7">
+      <PageHeader eyebrow="World / Developments" title="World Events" description="Domestic developments and external events requiring presidential awareness." actions={<div className="flex items-center gap-1 border border-border bg-panel-2 p-1">
           {(["all", "domestic", "international"] as TypeFilter[]).map((opt) => (
             <button
               key={opt}
@@ -89,8 +77,7 @@ export default function EventsPage() {
               {opt}
             </button>
           ))}
-        </div>
-      </div>
+        </div>} />
 
       {worldEventResponseError && (
         <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">

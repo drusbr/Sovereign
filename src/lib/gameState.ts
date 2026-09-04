@@ -13,6 +13,10 @@ import { createInitialFiscalState, type FiscalState } from "@/lib/fiscal";
 import { createLifecycle, type LifecycleState } from "@/lib/lifecycle";
 import type { LifecycleTurnReport } from "@/lib/operationsProjectsEngine";
 import type { EventFact } from "@/lib/eventFacts";
+import type { InteractiveEncounter } from "@/lib/encounters";
+import type { PolicyRecommendation } from "@/lib/recommendations";
+
+export interface PolicyImplementation { id: string; proceedingId: string; actionId: string; title: string; status: "IMPLEMENTATION_PHASE" | "FUNDING_RELEASED" | "ACTIVE" | "COMPLETED" | "BLOCKED"; startedTurn: number; expectedCompletionTurn: number; responsibleInstitution: string; departmentsAffected: number | null; expectedAnnualFiscalImpact: number | null; linkedProjectIds: string[]; linkedOperationIds: string[]; summary: string; }
 
 export interface TurnRecord {
   turn: number;
@@ -139,6 +143,10 @@ export interface InterviewRequest {
   opportunity: "low" | "medium" | "high";
   deadline: number; // turn number by which it expires
   accepted: boolean | null;
+  interviewer?: string;
+  reason?: string;
+  audience?: string;
+  advisorAssessment?: string;
 }
 
 export interface MediaEvent {
@@ -333,6 +341,9 @@ export interface GameState {
   internationalCoverage: number; // 0-100
   newsArticles: NewsArticle[]; // all generated articles
   pendingInterviews: InterviewRequest[]; // outlets requesting access
+  encounters: InteractiveEncounter[];
+  policyImplementations: PolicyImplementation[];
+  policyRecommendations: PolicyRecommendation[];
   mediaEvents: MediaEvent[]; // significant media moments
   globalStanding: number; // 0-100 composite diplomatic index
   activeNegotiations: number; // count of ongoing diplomatic processes
@@ -539,6 +550,10 @@ export function createInitialGameState(): GameState {
         opportunity: "high",
         deadline: 4,
         accepted: null,
+        interviewer: "Political desk",
+        reason: "Public scrutiny of the government's security strategy is increasing.",
+        audience: "National general-interest readership",
+        advisorAssessment: "A serious interview could establish the government's account before criticism hardens.",
       },
       {
         id: "interview_002",
@@ -548,8 +563,15 @@ export function createInitialGameState(): GameState {
         opportunity: "medium",
         deadline: 5,
         accepted: null,
+        interviewer: "Markets editor",
+        reason: "Investors are seeking clarity on the economic reform programme.",
+        audience: "Business leaders, investors and economic policymakers",
+        advisorAssessment: "The setting is favourable, but imprecise fiscal claims would be examined closely.",
       },
     ],
+    encounters: [],
+    policyImplementations: [],
+    policyRecommendations: [],
     mediaEvents: [],
     diplomaticRelations: [
       {
@@ -861,6 +883,9 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     triggeredFailureThresholdIds: saved.triggeredFailureThresholdIds ?? [],
     worldDriftLog: saved.worldDriftLog ?? [],
     advisors: saved.advisors ?? defaults.advisors,
+    encounters: saved.encounters ?? [],
+    policyImplementations: saved.policyImplementations ?? [],
+    policyRecommendations: saved.policyRecommendations ?? [],
     // Backfill education metrics for saves that predate this system
     education: !saved.education
       ? defaults.education

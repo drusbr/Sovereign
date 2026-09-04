@@ -23,7 +23,6 @@ import {
   firstSentence,
   pushTurnRecord,
   type GameState,
-  type InterviewRequest,
   type TurnRecord,
   type WorldEvent,
 } from "@/lib/gameState";
@@ -55,6 +54,8 @@ import {
   processLifecycleTurn,
 } from "@/lib/operationsProjectsEngine";
 import { applyEventPipeline } from "@/lib/eventPipeline";
+import { acceptInterviewRequest, answerEncounter, declineInterviewRequest, expireEncounters, startEncounter } from "@/lib/encounters";
+import { generatePolicyRecommendations } from "@/lib/recommendations";
 
 export interface TurnResult {
   narrative: string;
@@ -92,6 +93,8 @@ interface GameContextValue {
   fetchSpinRoomAssessment: () => Promise<void>;
   acceptInterview: (id: string) => void;
   declineInterview: (id: string) => void;
+  startInteractiveEncounter: (id: string) => void;
+  answerInteractiveEncounter: (encounterId: string, questionId: string, responseId: string) => void;
   /** Crisis alerts from checkFailureThresholds, queued one at a time. */
   activeFailureAlerts: FailureThreshold[];
   dismissFailureAlert: () => void;
@@ -329,7 +332,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
           randomDetails: generatedWorldEvents?.randomEvents,
           novelEvent: generatedWorldEvents?.novelEvent,
         });
-        const finalState = resolution.state;
+        const encounterUpdated = expireEncounters(resolution.state);
+        const finalState = { ...encounterUpdated, policyRecommendations: generatePolicyRecommendations(encounterUpdated) };
         const thresholds = resolution.failureThresholds;
         const triggeredGameEvent = resolution.triggeredGameEvent;
 
@@ -366,7 +370,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     async (proceedingId: string, action: CongressAction): Promise<string> => {
       try {
         const result = applyCongressAction(gameState, proceedingId, action);
-        const reported = applyEventPipeline(gameState, result.state).state;
+        const eventReported = applyEventPipeline(gameState, result.state).state;
+        const reported = { ...eventReported, policyRecommendations: generatePolicyRecommendations(eventReported) };
         setGameState(reported);
 
         if (user && campaignId) {
@@ -697,26 +702,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [gameState, spinRoomAssessment]);
 
-  const setInterviewStatus = useCallback(
-    (id: string, accepted: boolean) => {
-      setGameState({
-        ...gameState,
-        pendingInterviews: gameState.pendingInterviews.map(
-          (i: InterviewRequest) => (i.id === id ? { ...i, accepted } : i)
-        ),
-      });
-    },
-    [gameState]
-  );
+  const persistEncounterProgress = useCallback((next: GameState) => {
+    if (user && campaignId) void saveGameState(campaignId, next);
+    else if (isGuest && typeof window !== "undefined") window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(next));
+  }, [user, campaignId, isGuest]);
 
   const acceptInterview = useCallback(
-    (id: string) => setInterviewStatus(id, true),
-    [setInterviewStatus]
+    (id: string) => setGameState((current) => { const next = acceptInterviewRequest(current, id); persistEncounterProgress(next); return next; }),
+    [persistEncounterProgress]
   );
   const declineInterview = useCallback(
-    (id: string) => setInterviewStatus(id, false),
-    [setInterviewStatus]
+    (id: string) => setGameState((current) => { const next = declineInterviewRequest(current, id); persistEncounterProgress(next); return next; }),
+    [persistEncounterProgress]
   );
+  const startInteractiveEncounter = useCallback((id: string) => setGameState((current) => { const next = startEncounter(current, id); persistEncounterProgress(next); return next; }), [persistEncounterProgress]);
+  const answerInteractiveEncounter = useCallback((encounterId: string, questionId: string, responseId: string) => setGameState((current) => { const resolved = answerEncounter(current, encounterId, questionId, responseId); const next = { ...resolved, policyRecommendations: generatePolicyRecommendations(resolved) }; persistEncounterProgress(next); return next; }), [persistEncounterProgress]);
 
   return (
     <GameContext.Provider
@@ -742,6 +742,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         fetchSpinRoomAssessment,
         acceptInterview,
         declineInterview,
+        startInteractiveEncounter,
+        answerInteractiveEncounter,
         activeFailureAlerts,
         dismissFailureAlert,
         respondToWorldEvent,

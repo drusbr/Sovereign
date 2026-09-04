@@ -27,13 +27,13 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
   );
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-      <div className="rounded-lg border border-border bg-panel/60 p-4">
+    <div className="grid grid-cols-2 border-y border-border bg-panel/30 md:grid-cols-3 lg:grid-cols-5">
+      <div className="border-r border-border p-3">
         <p className="text-[11px] uppercase tracking-widest text-text-muted">
           Press Sentiment
         </p>
         <p
-          className="mt-1.5 text-2xl font-bold"
+          className="tabular mt-1.5 text-xl font-semibold"
           style={{ color: sentimentColor(gameState.mediaSentiment) }}
         >
           {fmtPct(gameState.mediaSentiment)}
@@ -41,11 +41,11 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
         <p className="mt-1 text-xs text-text-muted">of coverage is favourable</p>
       </div>
 
-      <div className="rounded-lg border border-border bg-panel/60 p-4">
+      <div className="border-r border-border p-3">
         <p className="text-[11px] uppercase tracking-widest text-text-muted">
           Coverage Index
         </p>
-        <p className="mt-1.5 text-2xl font-bold text-text">
+        <p className="tabular mt-1.5 text-xl font-semibold text-text">
           {fmtScore(gameState.pressCoverage)}
           <span className="text-sm font-normal text-text-muted">/100</span>
         </p>
@@ -55,36 +55,36 @@ export function KpiStrip({ gameState }: { gameState: GameState }) {
         <p className="mt-1.5 text-xs text-text-muted">national media presence</p>
       </div>
 
-      <div className="rounded-lg border border-border bg-panel/60 p-4">
+      <div className="border-r border-border p-3">
         <p className="text-[11px] uppercase tracking-widest text-text-muted">
           Dominant Narrative
         </p>
-        <span className="mt-2 inline-block rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+        <span className="mt-2 inline-block border-l-2 border-brass pl-2 text-xs font-semibold text-text">
           {gameState.dominantNarrative}
         </span>
       </div>
 
-      <div className="rounded-lg border border-border bg-panel/60 p-4">
+      <div className="border-r border-border p-3">
         <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-text-muted">
           <Globe2 size={12} />
           International Attention
         </p>
         <p
-          className="mt-1.5 text-2xl font-bold"
+          className="tabular mt-1.5 text-xl font-semibold"
           style={{ color: internationalColor(gameState.internationalCoverage) }}
         >
           {fmtPct(gameState.internationalCoverage)}
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-panel/60 p-4">
+      <div className="p-3">
         <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-text-muted">
           Pending Requests
           {hasUrgentDeadline && (
             <span className="h-1.5 w-1.5 rounded-full bg-danger" />
           )}
         </p>
-        <p className="mt-1.5 text-2xl font-bold text-text">{pendingCount}</p>
+        <p className="tabular mt-1.5 text-xl font-semibold text-text">{pendingCount}</p>
       </div>
     </div>
   );

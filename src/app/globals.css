@@ -4,19 +4,40 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-mono);
 
-  --color-background: #0a0f1e;
-  --color-panel: #111827;
-  --color-panel-2: #1a2332;
-  --color-accent: #3b82f6;
-  --color-text: #f1f5f9;
-  --color-text-muted: #64748b;
-  --color-positive: #10b981;
-  --color-danger: #ef4444;
-  --color-border: #1e293b;
+  --color-background: #0c111b;
+  --color-panel: #121925;
+  --color-panel-2: #192230;
+  --color-accent: #6f8fb8;
+  --color-text: #e7e3d9;
+  --color-text-muted: #929cab;
+  --color-positive: #5d9274;
+  --color-danger: #a95858;
+  --color-border: #293342;
+  --color-brass: #a99163;
+  --color-burgundy: #713f46;
 }
 
 body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer base {
+  * { scrollbar-color: #344052 #0c111b; }
+  :focus-visible { outline: 2px solid #8ba5c6; outline-offset: 2px; }
+}
+
+@layer components {
+  .sovereign-page { @apply mx-auto w-full max-w-[1500px] px-5 py-5 lg:px-8 lg:py-7; }
+  .sovereign-kicker { @apply text-[11px] font-semibold uppercase tracking-[0.2em] text-accent; }
+  .sovereign-title { font-family: Georgia, "Times New Roman", serif; @apply text-2xl font-normal tracking-tight text-text md:text-3xl; }
+  .sovereign-rule { @apply border-t border-border; }
+  .sovereign-panel { @apply border border-border bg-panel; border-radius: 3px; }
+  .sovereign-table { @apply w-full text-left text-[13px]; font-variant-numeric: tabular-nums; }
+  .sovereign-table thead { @apply border-y border-border bg-panel-2/60 text-[10px] uppercase tracking-[0.14em] text-text-muted; }
+  .sovereign-table th { @apply px-3 py-2 font-semibold; }
+  .sovereign-table td { @apply border-b border-border/70 px-3 py-2.5; }
+  .sovereign-table tbody tr { @apply transition-colors hover:bg-panel-2/40; }
+  .tabular { font-variant-numeric: tabular-nums; }
 }
 
 @keyframes page-fade-in {

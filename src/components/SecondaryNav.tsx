@@ -1,0 +1,2 @@
+import Link from "next/link";
+export function SecondaryNav({ items, active }: { items: { label: string; href: string }[]; active: string }) { return <nav className="mb-6 flex gap-6 overflow-x-auto border-b border-border" aria-label="Section navigation">{items.map((item)=><Link key={item.label} href={item.href} className={`whitespace-nowrap border-b-2 pb-2 text-xs font-semibold uppercase tracking-wider ${item.label === active ? "border-brass text-text" : "border-transparent text-text-muted hover:text-text"}`}>{item.label}</Link>)}</nav>; }

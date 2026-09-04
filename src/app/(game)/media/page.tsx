@@ -7,16 +7,19 @@ import { PressFeed } from "@/components/media/PressFeed";
 import { InterviewRequests } from "@/components/media/InterviewRequests";
 import { SpinRoom } from "@/components/media/SpinRoom";
 import { SentimentTrend } from "@/components/media/SentimentTrend";
+import { PageHeader } from "@/components/PageHeader";
+import { SecondaryNav } from "@/components/SecondaryNav";
+import { InterviewEncounter } from "@/components/media/InterviewEncounter";
 
 export default function MediaPage() {
-  const { gameState, acceptInterview, declineInterview } = useGame();
+  const { gameState, acceptInterview, declineInterview, startInteractiveEncounter, answerInteractiveEncounter } = useGame();
   const [toast, setToast] = useState<string | null>(null);
+  const [openEncounterId, setOpenEncounterId] = useState<string | null>(null);
+  const openEncounter = gameState.encounters.find((encounter) => encounter.id === openEncounterId) ?? null;
 
   function handleAccept(id: string) {
     acceptInterview(id);
-    setToast(
-      "Interview accepted. Conduct it from the Orders page by issuing orders that reference the interview."
-    );
+    setToast("Interview accepted. The briefing room is ready.");
     setTimeout(() => setToast(null), 5000);
   }
 
@@ -24,43 +27,30 @@ export default function MediaPage() {
     declineInterview(id);
   }
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-            Media Monitoring
-          </p>
-          <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="text-lg font-semibold text-text">
-              {gameState.countryName}
-            </h1>
-            <span className="text-xs text-text-muted">{gameState.date}</span>
-          </div>
-        </div>
+  function handleBegin(requestId: string) {
+    const encounter = gameState.encounters.find((item) => item.sourceRequestId === requestId);
+    if (encounter) setOpenEncounterId(encounter.id);
+  }
 
-        <span className="flex items-center gap-1.5 rounded-full border border-danger/30 bg-danger/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-danger">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-75" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-danger" />
-          </span>
-          Live
-        </span>
-      </div>
+  return (
+    <div className="sovereign-page space-y-7">
+      <PageHeader eyebrow="Media environment" title="The National Press" description="Coverage, editorial reaction and requests for presidential access." meta={`${gameState.date} · Turn ${gameState.turn}`} />
+      <SecondaryNav active="Front Page" items={[{label:"Front Page",href:"/media"},{label:"Interviews",href:"/media#interviews"},{label:"Communications",href:"/orders"}]}/>
 
       <KpiStrip gameState={gameState} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 xl:col-span-4">
           <PressFeed articles={gameState.newsArticles} />
         </div>
 
-        <div className="space-y-6 lg:col-span-2">
+        <div id="interviews" className="space-y-6 lg:col-span-2 xl:col-span-1">
           <InterviewRequests
             interviews={gameState.pendingInterviews}
             currentTurn={gameState.turn}
             onAccept={handleAccept}
             onDecline={handleDecline}
+            onBegin={handleBegin}
           />
           <SpinRoom />
         </div>
@@ -77,6 +67,7 @@ export default function MediaPage() {
           {toast}
         </div>
       )}
+      {openEncounter && <InterviewEncounter encounter={openEncounter} onStart={() => startInteractiveEncounter(openEncounter.id)} onAnswer={(questionId, responseId) => answerInteractiveEncounter(openEncounter.id, questionId, responseId)} onClose={() => setOpenEncounterId(null)} />}
     </div>
   );
 }

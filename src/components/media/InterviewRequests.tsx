@@ -31,11 +31,13 @@ function InterviewCard({
   currentTurn,
   onAccept,
   onDecline,
+  onBegin,
 }: {
   interview: InterviewRequest;
   currentTurn: number;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
+  onBegin: (id: string) => void;
 }) {
   const outletColor = OUTLET_COLORS[interview.outlet];
   const riskStyle = LEVEL_STYLES[interview.risk];
@@ -56,6 +58,7 @@ function InterviewCard({
       </span>
 
       <p className="mt-2 text-sm text-text">{interview.topic}</p>
+      {interview.reason && <p className="mt-2 text-xs leading-5 text-text-muted">{interview.reason}</p>}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
         <span className="flex items-center gap-1.5 text-text-muted">
@@ -78,9 +81,7 @@ function InterviewCard({
       </div>
 
       {interview.accepted === true ? (
-        <p className="mt-3 rounded-md border border-positive/30 bg-positive/10 px-3 py-2 text-xs font-medium text-positive">
-          Accepted — interview pending
-        </p>
+        <button type="button" onClick={() => onBegin(interview.id)} className="mt-3 w-full border border-positive/30 bg-positive/10 px-3 py-2 text-xs font-semibold text-positive hover:bg-positive/15">Begin interview →</button>
       ) : interview.accepted === false ? (
         <p className="mt-3 rounded-md border border-border bg-panel-2 px-3 py-2 text-xs text-text-muted line-through decoration-text-muted/60">
           Declined
@@ -116,11 +117,13 @@ export function InterviewRequests({
   currentTurn,
   onAccept,
   onDecline,
+  onBegin,
 }: {
   interviews: InterviewRequest[];
   currentTurn: number;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
+  onBegin: (id: string) => void;
 }) {
   return (
     <div>
@@ -138,6 +141,7 @@ export function InterviewRequests({
               currentTurn={currentTurn}
               onAccept={onAccept}
               onDecline={onDecline}
+              onBegin={onBegin}
             />
           ))}
         </div>

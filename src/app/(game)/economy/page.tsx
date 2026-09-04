@@ -11,6 +11,8 @@ import { FdiTrendChart } from "@/components/economy/FdiTrendChart";
 import { PolicyLevers } from "@/components/economy/PolicyLevers";
 import { IntelligenceLog } from "@/components/intelligence/IntelligenceLog";
 import { FiscalOverview } from "@/components/economy/FiscalOverview";
+import { PageHeader } from "@/components/PageHeader";
+import { SecondaryNav } from "@/components/SecondaryNav";
 
 export default function EconomyPage() {
   const { gameState } = useGame();
@@ -20,20 +22,8 @@ export default function EconomyPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-            Economic Situation Room
-          </p>
-          <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="text-lg font-semibold text-text">
-              {gameState.countryName}
-            </h1>
-            <span className="text-xs text-text-muted">{gameState.date}</span>
-          </div>
-        </div>
-
+    <div className="sovereign-page space-y-7">
+      <PageHeader eyebrow="Nation / Economy" title="Economic Situation" description="Production, prices, employment and the federal balance sheet." actions={
         <div className="flex flex-col items-end gap-1.5">
           <span
             className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${ratingStyle.text} ${ratingStyle.bg} ${ratingStyle.border}`}
@@ -43,28 +33,28 @@ export default function EconomyPage() {
           <span className="text-[11px] text-text-muted">
             Last Updated: Turn {gameState.turn} — {gameState.date}
           </span>
-        </div>
-      </div>
+        </div>} />
+      <SecondaryNav active="Overview" items={[{ label: "Overview", href: "#overview" }, { label: "Fiscal position", href: "#fiscal" }, { label: "Growth & labour", href: "#growth" }]} />
 
-      <KeyIndicators gameState={gameState} />
+      <div id="overview"><KeyIndicators gameState={gameState} /></div>
 
-      <div>
+      <div id="fiscal">
         <SectionHeader title="Federal Fiscal Position" />
         <FiscalOverview gameState={gameState} />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div id="growth" className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-3">
           <div>
             <SectionHeader title="GDP Growth Trend" />
-            <div className="rounded-lg border border-border bg-panel/60 p-4">
+            <div className="border-y border-border bg-panel/35 p-4">
               <GdpTrendChart data={gameState.gdpHistory} />
             </div>
           </div>
 
           <div>
             <SectionHeader title="Business Formation" />
-            <div className="rounded-lg border border-border bg-panel/60 p-4">
+            <div className="border-y border-border bg-panel/35 p-4">
               <p className="mb-1 text-xs text-text-muted">
                 New formal registrations · via Empresa Já platform
               </p>
@@ -81,7 +71,7 @@ export default function EconomyPage() {
 
           <div>
             <SectionHeader title="FDI Trend" />
-            <div className="rounded-lg border border-border bg-panel/60 p-4">
+            <div className="border-y border-border bg-panel/35 p-4">
               <p className="mb-1 text-xs text-text-muted">
                 Foreign Direct Investment (R$bn per turn)
               </p>

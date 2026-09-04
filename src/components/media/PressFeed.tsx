@@ -1,95 +1,15 @@
 import { Newspaper } from "lucide-react";
 import type { NewsArticle } from "@/lib/gameState";
-import { OUTLET_COLORS, SENTIMENT_STYLES, TOPIC_LABELS } from "@/lib/media";
-import { SectionHeader } from "@/components/SectionHeader";
 
-function ArticleCard({ article }: { article: NewsArticle }) {
-  const outletColor = OUTLET_COLORS[article.outlet];
-  const sentimentStyle = SENTIMENT_STYLES[article.sentiment];
-
-  return (
-    <div className="rounded-lg border border-border bg-panel/60 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-          style={{
-            color: outletColor,
-            borderColor: `${outletColor}4d`,
-            backgroundColor: `${outletColor}1a`,
-          }}
-        >
-          {article.outlet}
-        </span>
-        {article.isBreaking && (
-          <span className="animate-pulse rounded-full border border-danger/40 bg-danger/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-danger">
-            Breaking
-          </span>
-        )}
-        <span
-          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${sentimentStyle.text} ${sentimentStyle.bg} ${sentimentStyle.border}`}
-        >
-          {sentimentStyle.label}
-        </span>
-        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-          {TOPIC_LABELS[article.topic]}
-        </span>
-      </div>
-
-      <h3 className="mt-2.5 text-sm font-medium leading-snug text-text">
-        {article.headline}
-      </h3>
-      <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
-        {article.body}
-      </p>
-
-      <p className="mt-2.5 text-right font-mono text-[10px] text-text-muted/70">
-        T{article.turn} · {article.date}
-      </p>
-    </div>
-  );
-}
+function Byline({ article }: { article: NewsArticle }) { return <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted"><span className="text-brass">{article.outlet}</span> · {article.topic} · Turn {article.turn}</p>; }
+function SecondaryStory({ article }: { article: NewsArticle }) { return <article className="border-t border-border py-4"><Byline article={article}/><h3 className="mt-2 font-serif text-xl leading-tight text-text">{article.headline}</h3><p className="mt-2 text-[13px] leading-6 text-text-muted">{article.body}</p></article>; }
 
 export function PressFeed({ articles }: { articles: NewsArticle[] }) {
-  // Most recent turn first; articles within a turn keep their generation order.
-  const turns = Array.from(new Set(articles.map((a) => a.turn))).sort(
-    (a, b) => b - a
-  );
-
-  return (
-    <div>
-      <SectionHeader title="Press Feed" />
-
-      {articles.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-panel/40 p-10 text-center">
-          <Newspaper size={28} className="text-text-muted/50" />
-          <p className="text-sm text-text-muted">
-            No press coverage yet. Issue your first orders to generate media
-            attention.
-          </p>
-        </div>
-      ) : (
-        <div className="max-h-[720px] space-y-4 overflow-y-auto pr-1">
-          {turns.map((turn) => {
-            const turnArticles = articles.filter((a) => a.turn === turn);
-            return (
-              <div key={turn} className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                    Turn {turn} — {turnArticles[0]?.date}
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-                <div className="space-y-3">
-                  {turnArticles.map((article) => (
-                    <ArticleCard key={article.id} article={article} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  const ordered = [...articles].sort((a,b)=>b.turn-a.turn); const lead = ordered[0]; const secondary = ordered.slice(1,5); const latest = ordered.slice(5);
+  if (!lead) return <div className="border-y border-border py-16 text-center"><Newspaper size={28} className="mx-auto text-text-muted"/><p className="mt-3 font-serif text-xl text-text">The presses are quiet.</p><p className="mt-1 text-sm text-text-muted">Coverage will appear as government decisions and national developments unfold.</p></div>;
+  return <div><div className="mb-3 flex items-center justify-between border-b-2 border-text pb-2"><h2 className="font-serif text-2xl text-text">Front Page</h2><span className="text-[10px] uppercase tracking-wider text-text-muted">{lead.date}</span></div>
+    <article className="border-b border-border pb-6"><Byline article={lead}/><h2 className="mt-3 max-w-3xl font-serif text-3xl leading-[1.08] text-text md:text-4xl">{lead.headline}</h2><p className="mt-4 max-w-3xl text-[15px] leading-7 text-text-muted">{lead.body}</p></article>
+    {secondary.length > 0 && <div className="grid md:grid-cols-2">{secondary.map((article,index)=><div key={article.id} className={`${index%2===0 ? "md:pr-5" : "md:border-l md:border-border md:pl-5"}`}><SecondaryStory article={article}/></div>)}</div>}
+    {latest.length > 0 && <section className="mt-6"><h3 className="border-b border-border pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text">Latest dispatches</h3><div>{latest.map((article)=><article key={article.id} className="grid gap-2 border-b border-border py-3 md:grid-cols-[110px_1fr_auto]"><span className="text-[10px] uppercase tracking-wider text-brass">{article.outlet}</span><div><h4 className="font-serif text-base text-text">{article.headline}</h4><p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{article.body}</p></div><span className="text-[10px] text-text-muted">T{article.turn}</span></article>)}</div></section>}
+  </div>;
 }

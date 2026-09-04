@@ -10,6 +10,8 @@ import {
   type LegislativeProceeding,
 } from "@/lib/congress";
 import { fmtPct } from "@/lib/format";
+import { PageHeader } from "@/components/PageHeader";
+import { SecondaryNav } from "@/components/SecondaryNav";
 
 function statusClass(status: LegislativeProceeding["status"]): string {
   if (status === "PASSED") return "border-positive/30 bg-positive/10 text-positive";
@@ -62,7 +64,13 @@ function BillCard({ bill }: { bill: LegislativeProceeding }) {
   }
 
   return (
-    <article className="rounded-lg border border-border bg-panel/80 p-5 shadow-lg shadow-black/10">
+    <article className="border border-border bg-panel/55 p-5">
+      <div className="mb-5 grid grid-cols-5 border-y border-border text-[9px] font-semibold uppercase tracking-wider text-text-muted">
+        {["Introduced", "Negotiation", "Chamber", "Senate", "Passed"].map((step, index) => {
+          const activeIndex = closed ? 4 : bill.concessions.length > 0 ? 1 : 0;
+          return <div key={step} className={`border-r border-border px-2 py-2 text-center last:border-r-0 ${index <= activeIndex ? "bg-accent/8 text-text" : ""}`}>{step}</div>;
+        })}
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
           <div className="flex flex-wrap items-center gap-2">
@@ -132,8 +140,8 @@ export default function CongressPage() {
   const bills = gameState.legislativeProceedings ?? [];
   const active = bills.filter((bill) => !["PASSED", "FAILED", "WITHDRAWN"].includes(bill.status));
   const history = bills.filter((bill) => ["PASSED", "FAILED", "WITHDRAWN"].includes(bill.status)).reverse();
-  return <div className="mx-auto max-w-6xl space-y-7 p-6"><header className="flex items-start justify-between border-b border-border pb-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">National Congress</p><h1 className="mt-1 text-xl font-semibold text-text">Legislative Proceedings</h1><p className="mt-1 text-sm text-text-muted">Chamber of Deputies · Federal Senate</p></div><div className="rounded-md border border-border bg-panel px-3 py-2 text-right"><p className="text-[10px] uppercase tracking-wider text-text-muted">Action Points</p><p className="text-lg font-semibold text-text">{gameState.actionPoints} / 3</p></div></header>
-    {active.length === 0 ? <div className="flex flex-col items-center rounded-lg border border-border bg-panel/50 py-16 text-center"><Landmark className="text-text-muted" size={32}/><p className="mt-3 text-sm font-medium text-text">No legislation before Congress</p><p className="mt-1 max-w-md text-xs text-text-muted">Legislative orders issued from the Orders page will appear here as persistent proceedings.</p></div> : <section className="space-y-4"><div className="border-l-2 border-accent pl-3"><h2 className="text-xs font-semibold uppercase tracking-widest text-text">Active docket</h2></div>{active.map((bill) => <BillCard key={bill.id} bill={bill}/>)}</section>}
-    {history.length > 0 && <section className="space-y-4"><div className="flex items-center gap-2 border-l-2 border-text-muted pl-3"><Scale size={14} className="text-text-muted"/><h2 className="text-xs font-semibold uppercase tracking-widest text-text">Legislative record</h2></div>{history.map((bill) => <BillCard key={bill.id} bill={bill}/>)}</section>}
+  return <div className="sovereign-page space-y-7"><PageHeader eyebrow="Government / National Congress" title="Legislative Proceedings" description="Chamber of Deputies · Federal Senate" meta={`${active.length} active bills · ${gameState.actionPoints} actions available`} /><SecondaryNav active="Active docket" items={[{label:"Active docket",href:"#active"},{label:"Legislative record",href:"#record"}]} />
+    {active.length === 0 ? <div className="flex flex-col items-center border-y border-border bg-panel/30 py-16 text-center"><Landmark className="text-text-muted" size={32}/><p className="mt-3 text-sm font-medium text-text">No legislation before Congress</p><p className="mt-1 max-w-md text-xs text-text-muted">Legislative orders issued from the Orders page will appear here as persistent proceedings.</p></div> : <section id="active" className="space-y-4"><div className="border-l-2 border-accent pl-3"><h2 className="text-xs font-semibold uppercase tracking-widest text-text">Active docket</h2></div>{active.map((bill) => <BillCard key={bill.id} bill={bill}/>)}</section>}
+    {history.length > 0 && <section id="record" className="space-y-4"><div className="flex items-center gap-2 border-l-2 border-text-muted pl-3"><Scale size={14} className="text-text-muted"/><h2 className="text-xs font-semibold uppercase tracking-widest text-text">Legislative record</h2></div>{history.map((bill) => <BillCard key={bill.id} bill={bill}/>)}</section>}
   </div>;
 }

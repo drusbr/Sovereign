@@ -1,206 +1,45 @@
 "use client";
-
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { ArrowRight, ChevronDown, Globe2 } from "lucide-react";
 import { useGame } from "@/context/GameContext";
-import { Panel } from "@/components/dashboard/Panel";
-import { CircularProgress } from "@/components/dashboard/CircularProgress";
-import { ProgressBar } from "@/components/dashboard/ProgressBar";
-import { Sparkline } from "@/components/dashboard/Sparkline";
-import {
-  WorldMap,
-  type CountrySelection,
-} from "@/components/map/WorldMap";
-import { WorldDriftLog } from "@/components/dashboard/WorldDriftLog";
-import { WorldEventsWidget } from "@/components/dashboard/WorldEventsWidget";
-import { GoverningCapacity } from "@/components/dashboard/GoverningCapacity";
-import { fmtDelta, fmtInt, fmtPct, fmtScore } from "@/lib/format";
+import { WorldMap, type CountrySelection } from "@/components/map/WorldMap";
+import { renderEvent } from "@/lib/proceduralWriter";
 
-function approvalColor(value: number) {
-  if (value >= 50) return "#10b981";
-  if (value >= 30) return "#f59e0b";
-  return "#ef4444";
-}
-
-function educationColor(value: number) {
-  if (value > 65) return "#10b981";
-  if (value > 45) return "#f59e0b";
-  return "#ef4444";
-}
-
-function trendVisuals(change: number) {
-  const Icon = change > 0 ? ArrowUp : change < 0 ? ArrowDown : Minus;
-  const color =
-    change > 0 ? "text-positive" : change < 0 ? "text-danger" : "text-text-muted";
-  return { Icon, color };
-}
+type BriefingMatter = { id: string; domain: string; title: string; summary: string; href: string; urgency: "critical" | "high" | "decision" };
+function tone(urgency: BriefingMatter["urgency"]) { return urgency === "critical" ? "border-danger text-danger" : urgency === "high" ? "border-amber-500 text-amber-300" : "border-accent text-accent"; }
+function delta(value: number | undefined, suffix = "") { if (!value) return <span className="text-text-muted">—</span>; return <span className={value > 0 ? "text-positive" : "text-danger"}>{value > 0 ? "▲" : "▼"} {Math.abs(value).toFixed(1)}{suffix}</span>; }
 
 export default function DashboardPage() {
   const { gameState, lastResult } = useGame();
-  const [selectedCountry, setSelectedCountry] = useState<CountrySelection>({
-    id: "BRA",
-    name: "Brazil",
-    isoA3: "BRA",
-  });
-  const approvalChange = lastResult?.approvalChange ?? 0;
-  const securityChange = lastResult?.securityIndexChange ?? 0;
-  const approvalTrend = trendVisuals(approvalChange);
-  const securityTrend = trendVisuals(securityChange);
+  const [selectedCountry, setSelectedCountry] = useState<CountrySelection>({ id: "BRA", name: "Brazil", isoA3: "BRA" });
+  const [mapOpen, setMapOpen] = useState(false);
+  const matters = useMemo<BriefingMatter[]>(() => {
+    const result: BriefingMatter[] = [];
+    for (const event of gameState.worldEvents.filter((item) => item.requiresResponse && item.status === "active")) result.push({ id: event.id, domain: event.type === "international" ? "World" : "Domestic", title: event.title, summary: event.description, href: "/events", urgency: event.severity === "critical" ? "critical" : "high" });
+    for (const bill of gameState.legislativeProceedings.filter((item) => !["PASSED", "FAILED", "WITHDRAWN"].includes(item.status))) result.push({ id: bill.id, domain: "Congress", title: bill.title, summary: `${bill.status.replaceAll("_", " ").toLowerCase()} · presidential intervention and a bicameral vote remain available.`, href: "/congress", urgency: "decision" });
+    const latest = gameState.history.at(-1);
+    for (const id of latest?.eventFactIds ?? []) { const event = gameState.eventHistory.find((item) => item.id === id); if (!event?.surfacedToPresident) continue; const copy = renderEvent(event, "PRESIDENTIAL_BRIEFING", { recentTemplateIds: gameState.proceduralTemplateHistory }); const href = event.source === "CONGRESS" ? "/congress" : event.source === "PROJECT" ? "/projects" : event.source === "OPERATION" || event.source === "SECURITY" ? "/intelligence" : event.source === "FISCAL" || event.source === "ECONOMY" ? "/economy" : "/events"; result.push({ id: event.id, domain: event.category, title: copy.headline.replace(" — Presidential Briefing", ""), summary: copy.body.replace(/This development warrants presidential attention\.?/, ""), href, urgency: event.importance === "CRITICAL" ? "critical" : "high" }); }
+    return [...new Map(result.map((item) => [item.id, item])).values()].slice(0, 5);
+  }, [gameState]);
+  const activeProjects = gameState.projects.filter((project) => ["ACTIVE", "PLANNED", "STALLED"].includes(project.lifecycle.status));
+  const activeOperations = gameState.activeOperations.filter((operation) => ["ACTIVE", "PLANNED", "STALLED"].includes(operation.lifecycle.status));
+  const recentGdp = gameState.gdpHistory; const gdpDelta = recentGdp.length > 1 ? recentGdp.at(-1)! - recentGdp.at(-2)! : 0;
+  return <div className="sovereign-page space-y-8">
+    <header className="border-b border-border pb-5"><div className="flex items-end justify-between gap-4"><div><p className="sovereign-kicker">Presidential briefing · Brasília</p><h1 className="sovereign-title mt-2">Good morning, {gameState.playerTitle}.</h1><p className="mt-2 text-sm text-text-muted">{matters.length ? `${matters.length} matter${matters.length === 1 ? "" : "s"} require your attention.` : "No urgent matters require intervention this morning."}</p></div><div className="hidden text-right md:block"><p className="font-serif text-lg text-text">{gameState.date}</p><p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-text-muted">Briefing no. {gameState.turn}</p></div></div></header>
 
-  return (
-    <div className="p-6">
-      <div className="mb-5 flex items-baseline justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-text">
-            National Situation Room
-          </h1>
-          <p className="text-xs text-text-muted">
-            {gameState.countryName} · Turn {gameState.turn} · {gameState.date}
-          </p>
-        </div>
-      </div>
+    <section><div className="mb-3 flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-text">Priority desk</h2><span className="text-[10px] uppercase tracking-wider text-text-muted">Ordered by presidential relevance</span></div>
+      {matters.length ? <div className="divide-y divide-border border-y border-border">{matters.map((matter, index) => <article key={matter.id} className="grid gap-3 py-4 md:grid-cols-[42px_110px_1fr_auto]"><span className="font-serif text-xl text-text-muted/60">{String(index + 1).padStart(2,"0")}</span><span className={`h-fit border-l-2 pl-2 text-[10px] font-semibold uppercase tracking-[0.16em] ${tone(matter.urgency)}`}>{matter.domain}</span><div><h3 className="font-serif text-lg text-text">{matter.title}</h3><p className="mt-1 max-w-3xl text-[13px] leading-6 text-text-muted">{matter.summary}</p></div><Link href={matter.href} className="flex items-center gap-2 self-center text-[11px] font-semibold uppercase tracking-wider text-accent hover:text-text">Open <ArrowRight size={13}/></Link></article>)}</div> : <div className="border-y border-border py-8"><p className="font-serif text-lg text-text">A quiet week at the presidential desk.</p><p className="mt-1 text-sm text-text-muted">Routine government activity continues. You may review the national position or proceed to orders.</p></div>}
+    </section>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <Panel
-          title="Global Strategic Overview"
-          className="lg:col-span-2"
-          bodyClassName="p-0"
-        >
-          <WorldMap
-            className="h-[clamp(420px,58vh,620px)]"
-            selectedCountryId={selectedCountry.id}
-            onCountrySelect={setSelectedCountry}
-          />
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-4 py-3 text-xs text-text-muted">
-            <span>
-              Selected: <strong className="font-medium text-text">{selectedCountry.name}</strong>
-              <span className="ml-2 font-mono text-accent">{selectedCountry.id}</span>
-            </span>
-            <span className="sm:ml-auto">Wheel to zoom · Drag to pan · Click to inspect</span>
-          </div>
-        </Panel>
+    <section><h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-text">National pulse</h2><div className="grid border-y border-border sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{[
+      ["Approval", `${gameState.approval.toFixed(0)}%`, delta(lastResult?.approvalChange, "%")], ["Congress", `${gameState.congressionalSupport.toFixed(0)}%`, <span className="text-text-muted" key="c">coalition</span>], ["Security", gameState.securityIndex.toFixed(0), delta(lastResult?.securityIndexChange)], ["Inflation", `${gameState.inflation.toFixed(1)}%`, <span className={gameState.inflation > 5 ? "text-danger" : "text-text-muted"} key="i">3% target</span>], ["Unemployment", `${gameState.unemployment.toFixed(1)}%`, <span className="text-text-muted" key="u">labour force</span>], ["Growth", `${gameState.gdpGrowth.toFixed(1)}%`, delta(gdpDelta, "%")], ["Debt / GDP", `${gameState.fiscal.debtToGDP.toFixed(1)}%`, <span className="text-text-muted" key="d">federal</span>]
+    ].map(([label, value, change]) => <div key={String(label)} className="border-b border-border px-3 py-3 sm:border-r lg:border-b-0"><p className="text-[9px] uppercase tracking-[0.16em] text-text-muted">{label}</p><div className="mt-1 flex items-baseline justify-between gap-2"><span className="tabular text-lg font-semibold text-text">{value}</span><span className="text-[10px]">{change}</span></div></div>)}</div></section>
 
-        <div className="flex flex-col gap-5">
-          <Panel title="Approval Rating">
-            <div className="flex items-center gap-4">
-              <div className="relative flex h-[88px] w-[88px] items-center justify-center">
-                <CircularProgress
-                  value={gameState.approval}
-                  color={approvalColor(gameState.approval)}
-                />
-                <span className="absolute text-xl font-bold text-text">
-                  {fmtPct(gameState.approval)}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span
-                  className={`flex items-center gap-1 text-sm font-medium ${approvalTrend.color}`}
-                >
-                  <approvalTrend.Icon size={14} />
-                  {fmtDelta(lastResult ? approvalChange : 0)} last turn
-                </span>
-                <span className="text-xs text-text-muted">
-                  National approval index
-                </span>
-              </div>
-            </div>
-          </Panel>
+    <div className="grid gap-8 xl:grid-cols-[1.35fr_.65fr]"><section><h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-text">National assessment</h2><p className="max-w-4xl font-serif text-xl leading-8 text-text">{gameState.situation}</p>{gameState.worldDriftLog.length > 0 && <details className="mt-4 border-t border-border pt-3"><summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-text-muted">Background developments</summary><ul className="mt-3 space-y-1 text-sm text-text-muted">{gameState.worldDriftLog.map((line) => <li key={line}>— {line}</li>)}</ul></details>}</section>
+      <section><h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-text">Your government</h2><div className="divide-y divide-border border-y border-border text-sm"><StatusRow label="Decisions awaiting response" value={matters.filter((item)=>item.urgency==="decision"||item.urgency==="critical").length} href={matters.length ? matters[0].href : "/orders"}/><StatusRow label="Programmes underway" value={activeProjects.length} href="/projects"/><StatusRow label="Federal operations active" value={activeOperations.length} href="/intelligence"/><StatusRow label="Open diplomatic pressures" value={gameState.diplomaticPressures.filter((item)=>!item.resolved).length} href="/diplomacy"/></div><Link href="/orders" className="mt-5 flex w-full items-center justify-between border border-brass bg-brass/10 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-text hover:bg-brass/20">Proceed to decision desk <ArrowRight size={15}/></Link></section></div>
 
-          <Panel title="Security Index">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold text-text">
-                {fmtScore(gameState.securityIndex)}
-                <span className="text-sm font-normal text-text-muted">
-                  /100
-                </span>
-              </span>
-              {lastResult && securityChange !== 0 && (
-                <span
-                  className={`flex items-center gap-1 text-xs font-semibold ${securityTrend.color}`}
-                >
-                  <securityTrend.Icon size={12} />
-                  {fmtDelta(securityChange)} last turn
-                </span>
-              )}
-            </div>
-            <div className="mt-3">
-              <ProgressBar value={gameState.securityIndex} color="#3b82f6" />
-            </div>
-          </Panel>
-
-          <div className="grid grid-cols-2 gap-5">
-            <Panel title="GDP Growth">
-              <div className="flex items-end justify-between">
-                <span className="text-2xl font-bold text-text">
-                  {fmtPct(gameState.gdpGrowth)}
-                </span>
-                <Sparkline data={gameState.gdpHistory} color="#3b82f6" />
-              </div>
-            </Panel>
-
-            <Panel title="Inflation">
-              <span
-                className={`text-2xl font-bold ${
-                  gameState.inflation > 5 ? "text-danger" : "text-text"
-                }`}
-              >
-                {fmtPct(gameState.inflation)}
-              </span>
-              <p className="mt-1 text-xs text-text-muted">
-                {gameState.inflation > 5 ? "Above target" : "Within target"}
-              </p>
-            </Panel>
-          </div>
-
-          <Panel title="Active Projects">
-            <span className="text-2xl font-bold text-text">
-              {fmtInt(gameState.activeProjects)}
-            </span>
-            <p className="mt-1 text-xs text-text-muted">
-              Ongoing federal initiatives
-            </p>
-          </Panel>
-
-          <Panel title="Education Index">
-            <div className="flex items-end gap-2">
-              <span className="text-2xl font-bold text-text">
-                {fmtScore(gameState.education.educationIndex)}
-              </span>
-              <span className="mb-0.5 text-sm font-normal text-text-muted">
-                /100
-              </span>
-            </div>
-            <div className="mt-2">
-              <ProgressBar
-                value={gameState.education.educationIndex}
-                color={educationColor(gameState.education.educationIndex)}
-              />
-            </div>
-            <p className="mt-2 text-xs text-text-muted">
-              Literacy {fmtPct(gameState.education.literacyRate)} · Completion{" "}
-              {fmtPct(gameState.education.secondaryCompletionRate)}
-            </p>
-            <div className="mt-2">
-              <Sparkline data={gameState.educationHistory} color="#3b82f6" />
-            </div>
-          </Panel>
-        </div>
-
-        <Panel title="Current Situation" className="lg:col-span-3">
-          <p className="text-sm leading-relaxed text-text-muted">
-            {gameState.situation}
-          </p>
-          <WorldDriftLog entries={gameState.worldDriftLog} />
-          <GoverningCapacity
-            congressionalSupport={gameState.congressionalSupport}
-            civilLiberties={gameState.civilLiberties}
-            internationalPressure={gameState.internationalPressure}
-            approval={gameState.approval}
-          />
-        </Panel>
-
-        <WorldEventsWidget events={gameState.worldEvents} />
-      </div>
-    </div>
-  );
+    <section id="world-map" className="border-t border-border pt-6"><button type="button" onClick={()=>setMapOpen((open)=>!open)} className="flex w-full items-center justify-between text-left"><span><span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-text"><Globe2 size={14}/> Global strategic picture</span><span className="mt-1 block text-xs text-text-muted">Selected: {selectedCountry.name} · {selectedCountry.id}</span></span><ChevronDown size={17} className={`text-text-muted transition ${mapOpen ? "rotate-180" : ""}`}/></button>{mapOpen && <div className="mt-4 border border-border bg-panel"><WorldMap className="h-[clamp(360px,56vh,650px)]" selectedCountryId={selectedCountry.id} onCountrySelect={setSelectedCountry}/></div>}</section>
+  </div>;
 }
+function StatusRow({ label, value, href }: { label: string; value: number; href: string }) { return <Link href={href} className="flex items-center justify-between py-3 hover:text-accent"><span className="text-text-muted">{label}</span><span className="tabular font-semibold text-text">{value} <ArrowRight className="ml-2 inline" size={12}/></span></Link>; }

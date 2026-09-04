@@ -30,10 +30,10 @@ function StatCard({
   const trend = delta !== undefined ? trendOf(delta) : null;
 
   return (
-    <div className="rounded-lg border border-border bg-panel/60 p-4">
+    <div className="min-w-0 border-r border-border px-3 py-3 last:border-r-0">
       <p className="text-[11px] uppercase tracking-widest text-text-muted">{label}</p>
       <div className="mt-1.5 flex items-baseline gap-2">
-        <p className="text-2xl font-bold" style={{ color }}>
+        <p className="tabular text-xl font-semibold" style={{ color }}>
           {value}
         </p>
         {trend && (
@@ -55,7 +55,7 @@ export function KeyIndicators({ gameState }: { gameState: GameState }) {
     gameState.fdiFlow - gameState.fdiHistory[gameState.fdiHistory.length - 1];
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 border-y border-border bg-panel/35 md:grid-cols-3 lg:grid-cols-6">
       <StatCard
         label="GDP Growth"
         value={fmtPct(gameState.gdpGrowth)}

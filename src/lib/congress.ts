@@ -331,6 +331,23 @@ export function resolveCongressVote(state: GameState, proceedingId: string): Con
     ? applyFiscalAction(state, proceeding.originalAction, { legislationPassed: true, proceedingId })
     : null;
   const implemented = passed && (isLifecycleAction ? lifecycleCreated : !fiscalResult || Boolean(fiscalResult.entry));
+  const linkedProjectIds = lifecycleState.projects.filter((item) => item.actionId === proceeding.originalAction.id).map((item) => item.id);
+  const linkedOperationIds = lifecycleState.activeOperations.filter((item) => item.actionId === proceeding.originalAction.id).map((item) => item.id);
+  const implementation = passed ? {
+    id: `implementation-${proceeding.id}`,
+    proceedingId,
+    actionId: proceeding.originalAction.id,
+    title: proceeding.title,
+    status: (implemented ? (fiscalResult?.entry ? "FUNDING_RELEASED" : "IMPLEMENTATION_PHASE") : "BLOCKED") as "FUNDING_RELEASED" | "IMPLEMENTATION_PHASE" | "BLOCKED",
+    startedTurn: state.turn,
+    expectedCompletionTurn: state.turn + (isLifecycleAction ? 8 : 12),
+    responsibleInstitution: proceeding.originalAction.actionType === "FUND_OPERATION" || proceeding.originalAction.actionType === "SECURITY_OPERATION" ? "Ministry of Justice and federal security agencies" : isFiscalAction(proceeding.originalAction) ? "Ministry of Finance and Federal Revenue Service" : "Presidency and responsible federal ministries",
+    departmentsAffected: null,
+    expectedAnnualFiscalImpact: fiscalResult?.entry?.annualRunRateImpact ?? null,
+    linkedProjectIds,
+    linkedOperationIds,
+    summary: linkedProjectIds.length || linkedOperationIds.length ? "Congressional authority obtained; delivery is proceeding through the linked funded programme or operation." : fiscalResult?.entry ? "Congressional authority obtained and the enacted fiscal measure has entered the federal accounts." : "Congressional authority obtained; responsible ministries are preparing implementation.",
+  } : null;
   const updated: LegislativeProceeding = {
     ...proceeding,
     status: passed ? "PASSED" : "FAILED",
@@ -354,6 +371,7 @@ export function resolveCongressVote(state: GameState, proceedingId: string): Con
       approval: clamp(state.approval + (passed ? 2 : -2), 0, 100),
       congressionalSupport: clamp(state.congressionalSupport + (passed ? 2 : -4), 0, 100),
       legislativeProceedings: state.legislativeProceedings.map((bill) => bill.id === proceedingId ? updated : bill),
+      policyImplementations: implementation && !state.policyImplementations.some((item) => item.proceedingId === proceedingId) ? [...state.policyImplementations, implementation] : state.policyImplementations,
     },
     voteResult,
     message: implemented

@@ -1,5 +1,5 @@
 export type EventImportance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type EventSource = "STATE_CHANGE" | "PROJECT" | "OPERATION" | "CONGRESS" | "FISCAL" | "ECONOMY" | "SECURITY" | "POLITICS" | "WORLD" | "RANDOM";
+export type EventSource = "STATE_CHANGE" | "PROJECT" | "OPERATION" | "CONGRESS" | "FISCAL" | "ECONOMY" | "SECURITY" | "POLITICS" | "WORLD" | "MEDIA" | "RANDOM";
 export type EventCategory = "government" | "economy" | "security" | "politics" | "social" | "international";
 export type EventType =
   | "LEGISLATION_INTRODUCED" | "LEGISLATION_PASSED" | "LEGISLATION_FAILED" | "LEGISLATION_WITHDRAWN"
@@ -9,7 +9,7 @@ export type EventType =
   | "INFLATION_SHIFT" | "RECESSION_BEGAN" | "RECESSION_ENDED" | "UNEMPLOYMENT_SHIFT" | "CREDIT_RATING_CHANGED"
   | "APPROVAL_THRESHOLD" | "APPROVAL_SHIFT" | "COALITION_THRESHOLD"
   | "SECURITY_INDEX_SHIFT" | "CRIMINAL_CAPACITY_SHIFT" | "CRIMINAL_THREAT_CHANGED"
-  | "WORLD_EVENT";
+  | "WORLD_EVENT" | "INTERVIEW_ACCEPTED" | "INTERVIEW_DECLINED" | "MEDIA_INTERVIEW_COMPLETED" | "MAJOR_PUBLIC_COMMITMENT";
 
 export interface EventSubject { id: string; type: "PROJECT" | "OPERATION" | "ORGANISATION" | "PROCEEDING" | "COUNTRY" | "STATE" | "INSTITUTION"; name: string; }
 

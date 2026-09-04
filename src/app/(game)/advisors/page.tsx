@@ -8,6 +8,8 @@ import { getAdvisorsFromState } from "@/lib/advisors";
 import { AdvisorCard } from "@/components/advisors/AdvisorCard";
 import { AdvisorPanel } from "@/components/advisors/AdvisorPanel";
 import { CabinetRoom } from "@/components/advisors/CabinetRoom";
+import { PageHeader } from "@/components/PageHeader";
+import { generatePolicyRecommendations } from "@/lib/recommendations";
 
 export default function AdvisorsPage() {
   const {
@@ -33,37 +35,24 @@ export default function AdvisorsPage() {
   }
 
   const advisors = getAdvisorsFromState(gameState);
+  const recommendations = gameState.policyRecommendations.length ? gameState.policyRecommendations : generatePolicyRecommendations(gameState);
   const openAdvisor = advisors.find((a) => a.id === openAdvisorId) ?? null;
 
   return (
-    <div className="p-6">
-      <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">
-            Cabinet
-          </p>
-          <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="text-lg font-semibold text-text">Advisors</h1>
-            <span className="text-xs text-text-muted">
-              Turn {gameState.turn} · {gameState.date}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-panel px-3 py-1.5">
+    <div className="sovereign-page">
+      <PageHeader eyebrow="Presidency / Cabinet" title="Council of Ministers" description="Confidential briefings and direct consultation with your government." actions={<div className="flex shrink-0 items-center gap-1.5 border border-border bg-panel px-3 py-1.5">
           <Zap size={13} className="text-amber-400" />
           <span className="text-xs font-semibold text-text">
             {gameState.actionPoints}/3
           </span>
           <span className="text-xs text-text-muted">Action Points</span>
-        </div>
-      </div>
+        </div>} />
 
       <button
         type="button"
         onClick={handleConveneCabinet}
         disabled={gameState.actionPoints < 2}
-        className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-lg border border-amber-400/30 bg-amber-400/5 px-5 py-3.5 text-sm font-semibold text-amber-400 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-5 flex w-full items-center justify-center gap-2.5 border border-brass/40 bg-brass/5 px-5 py-3.5 text-sm font-semibold text-brass transition hover:bg-brass/10 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Users2 size={16} />
         Convene Cabinet
@@ -74,6 +63,14 @@ export default function AdvisorsPage() {
           Not enough action points to convene the full cabinet this turn.
         </p>
       )}
+
+      <section className="mt-6 border-y border-border bg-panel/25 px-4 py-4">
+        <div className="flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-widest text-text">Strategic recommendations</h2><span className="text-[10px] uppercase tracking-wider text-text-muted">Deterministic government assessment</span></div>
+        <div className="mt-3 grid gap-x-6 gap-y-1 lg:grid-cols-2">{recommendations.slice(0, 6).map((item) => {
+          const advisor = advisors.find((candidate) => candidate.role === item.advisorRole);
+          return <div key={item.id} className="border-t border-border py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-text">{item.title}</p><p className="mt-1 text-xs leading-5 text-text-muted">{item.rationale}</p></div><span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-brass">{item.difficulty}</span></div><p className="mt-2 text-xs text-text"><span className="text-text-muted">{advisor?.name ?? "Cabinet"}: </span>{item.action}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-text-muted">Required institution: {item.institution}</p></div>;
+        })}</div>
+      </section>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {advisors.map((advisor) => {
