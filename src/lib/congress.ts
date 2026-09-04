@@ -3,6 +3,8 @@ import type { GameState } from "@/lib/gameState";
 import { applyFiscalAction, isFiscalAction } from "@/lib/fiscal";
 import { createLifecycleEntities } from "@/lib/operationsProjectsEngine";
 import { fmtPct } from "@/lib/format";
+import { resolveBillTypeHint } from "@/lib/countryKnowledge/lookup";
+import { getCountryKnowledge } from "@/lib/countryKnowledge/registry";
 
 export type LegislativeStatus =
   | "INTRODUCED"
@@ -197,6 +199,18 @@ function billTitle(order: string): string {
   return clean.length <= 92 ? clean : `${clean.slice(0, 89)}…`;
 }
 
+/**
+ * Resolves the bill type from Country Knowledge when the action carries a matching
+ * instrument (e.g. CONSTITUTIONAL_AMENDMENT -> billType "CONSTITUTIONAL_AMENDMENT",
+ * consumed by chamberRule() below). Legacy actions with no instrumentId — the vast
+ * majority today — keep the existing ordinary-law default unchanged.
+ */
+function resolveBillType(action: ProposedAction): LegislativeProceeding["billType"] {
+  if (!action.instrumentId) return "ORDINARY";
+  const knowledge = getCountryKnowledge(action.actorId);
+  return (knowledge && resolveBillTypeHint(knowledge, action.instrumentId)) || "ORDINARY";
+}
+
 export function createLegislativeProceeding(action: ProposedAction, turn: number): LegislativeProceeding {
   return {
     id: `bill-${action.id}`,
@@ -205,7 +219,7 @@ export function createLegislativeProceeding(action: ProposedAction, turn: number
     description: action.rawOrder.trim(),
     proposedTurn: turn,
     status: "INTRODUCED",
-    billType: "ORDINARY",
+    billType: resolveBillType(action),
     requiredInstitution: "National Congress",
     supportModifier: 0,
     senateModifier: 0,

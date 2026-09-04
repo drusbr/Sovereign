@@ -1,4 +1,5 @@
 import type { GameState } from "@/lib/gameState";
+import { validateAgainstCountryKnowledge } from "@/lib/countryKnowledge/validation";
 import type { ProposedAction, ValidationIssue } from "./types";
 
 export type ActionValidationState = Pick<GameState, "countryName">;
@@ -170,6 +171,11 @@ export function validateAction(
     case "EXECUTIVE":
       break;
   }
+
+  // Country Knowledge: is this structurally possible at all, independent of current
+  // GameState? Additive — only fires when the action carries a resolved instrumentId/
+  // actionDefinitionId, so actions without them (the vast majority today) are unaffected.
+  issues.push(...validateAgainstCountryKnowledge(action, action.actorId));
 
   const valid = !issues.some((item) => item.severity === "BLOCKER");
   return { valid, status: valid ? "VALID" : "BLOCKED", issues };

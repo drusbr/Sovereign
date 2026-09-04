@@ -120,6 +120,16 @@ export interface ProposedAction {
   prerequisites: ActionPrerequisite[];
   status: ActionStatus;
   validationIssues: ValidationIssue[];
+  /**
+   * Optional Country Knowledge references (src/lib/countryKnowledge/). Additive and
+   * unset for legacy actions and any action the interpreter couldn't confidently map —
+   * every consumer must keep working when they're absent.
+   */
+  instrumentId?: string;
+  actionDefinitionId?: string;
+  /** Set only on a concrete action already known to serve an objective — never used to
+   *  route an objective-only request into the turn pipeline by itself. */
+  objectiveId?: string;
 }
 
 export function createDraftAction(params: {

@@ -175,3 +175,32 @@ test("turn narrative context exposes the created proceeding as institutional tru
   assert.match(prompt, /Proceeding status: INTRODUCED/);
   assert.match(prompt, /SOURCE OF TRUTH/);
 });
+
+test("a Country Knowledge constitutional-amendment instrument creates a CONSTITUTIONAL_AMENDMENT proceeding", () => {
+  const amendment = {
+    ...legislativeAction("spending-ceiling-amendment"),
+    rawOrder: "Amend the Constitution to impose a federal spending ceiling.",
+    instrumentId: "CONSTITUTIONAL_AMENDMENT",
+    actionDefinitionId: "constitutional_spending_ceiling_amendment",
+  };
+  const bill = createLegislativeProceeding(amendment, 1);
+  assert.equal(bill.billType, "CONSTITUTIONAL_AMENDMENT");
+  // Existing threshold logic is used unchanged — chamberRule() already implements the
+  // three-fifths quorum for CONSTITUTIONAL_AMENDMENT; this just proves it's now reachable.
+  assert.equal(chamberRule(bill.billType, "CHAMBER").fixedApprovalThreshold, 308);
+  assert.equal(chamberRule(bill.billType, "CHAMBER").approvalRule, "THREE_FIFTHS");
+  assert.equal(chamberRule(bill.billType, "SENATE").fixedApprovalThreshold, 49);
+});
+
+test("a legacy action with no instrumentId still defaults to an ORDINARY proceeding", () => {
+  const bill = createLegislativeProceeding(legislativeAction("legacy-no-instrument"), 1);
+  assert.equal(bill.billType, "ORDINARY");
+});
+
+test("an instrumentId with no billTypeHint (e.g. a fiscal instrument) still defaults to ORDINARY", () => {
+  const bill = createLegislativeProceeding(
+    { ...legislativeAction("fiscal-instrument"), instrumentId: "SPENDING_ADJUSTMENT" },
+    1
+  );
+  assert.equal(bill.billType, "ORDINARY");
+});
