@@ -15,6 +15,7 @@ import {
 } from "@/lib/gameState";
 import { buildIntelligenceEvent, pushIntelligenceEvent } from "@/lib/intelligence";
 import { adjustCreditRating } from "@/lib/economy";
+import { runCopomMeetingIfDue } from "@/lib/economy/monetaryPolicy";
 import { appendArticles, computePressCoverage, computeSentimentDelta } from "@/lib/media";
 import {
   applyInternationalPressureDrag,
@@ -207,6 +208,10 @@ export function resolveTurn(input: ResolveTurnInput): TurnResolutionDraft {
   working.globalStanding = computeGlobalStanding(pressureDrag.relations);
   working.activeNegotiations = computeActiveNegotiations(opportunities);
 
+  // COPOM is an autonomous institution. A meeting runs only when its calendar date
+  // is due; no presidential action or generated effect can invoke or set Selic.
+  working = runCopomMeetingIfDue(working, current.turn, current.date).state;
+
   working.gdpHistory = pushCapped(working.gdpHistory, working.gdpGrowth);
   working.fdiHistory = pushCapped(working.fdiHistory, working.fdiFlow);
   working.businessRegistrationHistory = pushCapped(
@@ -250,6 +255,11 @@ export function resolveTurn(input: ResolveTurnInput): TurnResolutionDraft {
     turnRecord,
     previousTurn,
     generatedEffects: hasExecutableAction ? mechanicalEffects : {},
+    economicAttribution: {
+      demand: tick.demandContributions,
+      supply: tick.supplyContributions,
+      inflation: tick.inflationContributions,
+    },
   };
 }
 
@@ -407,6 +417,7 @@ export function finalizeTurn(
     actionResolutions: draft.actionResolutions,
     turnRecord,
     generatedEffects: draft.generatedEffects,
+    economicAttribution: draft.economicAttribution,
     newWorldEvents,
     failureThresholds,
     triggeredGameEvent,

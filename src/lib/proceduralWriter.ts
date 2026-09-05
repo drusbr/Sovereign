@@ -104,6 +104,38 @@ function fiscalCopy(candidate: StoryCandidate, variant: number) {
   return { headline: [`Debt Ratio Crosses ${event.metrics?.threshold}%`, "Federal Debt Moves Through Key Threshold", "Treasury Position Shifts as Debt Ratio Changes"][variant], body: `Federal debt-to-GDP moved from ${event.previousValues?.debtToGDP}% to ${event.currentValues?.debtToGDP}%, crossing the ${event.metrics?.threshold}% threshold.` };
 }
 
+function monetaryCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact;
+  const previous = Number(event.previousValues?.selic ?? 0);
+  const current = Number(event.currentValues?.selic ?? previous);
+  const change = Number(event.metrics?.change ?? current - previous);
+  const inflation = Number(event.metrics?.inflation ?? 0);
+  const target = Number(event.metrics?.inflationTarget ?? 0);
+  const verb = change > 0 ? "raises" : change < 0 ? "cuts" : "holds";
+  const headlines = change === 0
+    ? [`COPOM Holds Selic at ${current.toFixed(2)}%`, `Central Bank Maintains Selic at ${current.toFixed(2)}%`, `COPOM Leaves Policy Rate Unchanged`]
+    : [`COPOM ${verb === "raises" ? "Raises" : "Cuts"} Selic to ${current.toFixed(2)}%`, `Central Bank Moves Policy Rate ${Math.abs(change).toFixed(2)} Points ${change > 0 ? "Higher" : "Lower"}`, `Selic Set at ${current.toFixed(2)}% After COPOM Meeting`];
+  const reasons = event.causes?.length ? event.causes.join(" and ") : "the committee assessed current economic conditions";
+  return {
+    headline: headlines[variant],
+    body: `The Monetary Policy Committee ${verb === "holds" ? "maintained" : verb === "raises" ? "increased" : "reduced"} the Selic target from ${previous.toFixed(2)}% to ${current.toFixed(2)}%. Annual inflation stood at ${inflation.toFixed(2)}% against a ${target.toFixed(2)}% target; the committee cited ${reasons}. The stance will affect demand gradually rather than changing inflation immediately.`,
+  };
+}
+
+function externalCopy(candidate: StoryCandidate, variant: number) {
+  const event = candidate.primaryFact;
+  const previous = Number(event.previousValues?.exchangeRateBrlPerUsd ?? 0);
+  const current = Number(event.currentValues?.exchangeRateBrlPerUsd ?? previous);
+  const weakened = current > previous;
+  const headlines = weakened
+    ? ["Real Weakens Against the Dollar", "Brazilian Real Depreciates", "External Conditions Put Pressure on the Real"]
+    : ["Real Strengthens Against the Dollar", "Brazilian Real Appreciates", "External Conditions Support the Real"];
+  return {
+    headline: headlines[variant],
+    body: `The Brazilian real ${weakened ? "depreciated" : "appreciated"} from R$${previous.toFixed(2)} to R$${current.toFixed(2)} per US dollar as ${event.causes?.[0] ?? "external conditions changed"}. ${weakened ? "The move is adding to imported price pressure while gradually improving export competitiveness." : "The move is easing imported price pressure while gradually reducing export competitiveness."}`,
+  };
+}
+
 function genericCopy(candidate: StoryCandidate, variant: number) {
   const event = candidate.primaryFact; const name = playerFacingEntityName(event); const label = event.type.replaceAll("_", " ").toLowerCase();
   const headline = [`${name}: ${label}`, `${name} Marks New National Development`, `Government Faces ${label}`][variant];
@@ -113,10 +145,12 @@ function genericCopy(candidate: StoryCandidate, variant: number) {
 }
 
 function copyFor(candidate: StoryCandidate, variant: number) {
+  if (candidate.primaryFact.type === "EXCHANGE_RATE_SHIFT") return externalCopy(candidate, variant);
   if (candidate.family === "OPERATION") return operationCopy(candidate, variant);
   if (candidate.family === "PROJECT") return projectCopy(candidate, variant);
   if (candidate.family === "CONGRESS") return congressCopy(candidate, variant);
   if (candidate.family === "FISCAL") return fiscalCopy(candidate, variant);
+  if (candidate.family === "MONETARY") return monetaryCopy(candidate, variant);
   return genericCopy(candidate, variant);
 }
 function templateFamilies(family: StoryFamily): string[] { return family === "PROJECT" ? ["delivery-led", "institution-led", "programme-led"] : family === "OPERATION" ? ["operation-led", "authority-led", "impact-led"] : family === "CONGRESS" ? ["institution-led", "measure-led", "outcome-led"] : ["subject-led", "change-led", "consequence-led"]; }
@@ -130,7 +164,7 @@ export function renderStory(candidate: StoryCandidate, style: NarrativeStyle, co
 }
 
 export function renderEvent(event: EventFact, style: NarrativeStyle, context: { recentTemplateIds?: string[] } = {}): RenderedEvent {
-  const family: StoryFamily = event.source === "CONGRESS" ? "CONGRESS" : event.source === "FISCAL" ? "FISCAL" : event.source === "PROJECT" ? "PROJECT" : event.source === "OPERATION" || event.source === "SECURITY" ? "OPERATION" : event.source === "ECONOMY" ? "ECONOMY" : event.source === "WORLD" ? "WORLD" : "GENERAL";
+  const family: StoryFamily = event.source === "CONGRESS" ? "CONGRESS" : event.source === "FISCAL" ? "FISCAL" : event.source === "MONETARY" ? "MONETARY" : event.source === "PROJECT" ? "PROJECT" : event.source === "OPERATION" || event.source === "SECURITY" ? "OPERATION" : event.source === "ECONOMY" ? "ECONOMY" : event.source === "WORLD" ? "WORLD" : "GENERAL";
   return renderStory({ id: `story-${event.id}`, turn: event.turn, family, angle: event.type.toLowerCase(), primaryFact: event, facts: [event], storyWorthiness: 100 }, style, context);
 }
 

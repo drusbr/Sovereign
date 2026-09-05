@@ -16,6 +16,12 @@ const EXPECTED_HEADERS = [
   "demandPressure", "outputGap", "inflationPressure", "labourSlack",
   "approval", "congressionalSupport", "securityIndex",
   "actionsIssued", "activeProjects", "activeOperations", "activeLegislativeProceedings",
+  "productiveCapacityIndex", "availableCapacityHeadroom", "capacityUtilisationFlow", "supplyHeadroomApplied",
+  "currentSelic", "monetaryStance", "transmittedMonetaryPressure", "inflationTarget", "copomDecision",
+  "exchangeRateBrlPerUsd", "exchangeRatePressure", "foreignDemandIndex", "commodityConditionsIndex",
+  "exportIndex", "importIndex", "externalDemandContribution", "importedInflationPressure",
+  "consumptionIndex", "investmentIndex", "consumptionDemandContribution",
+  "investmentDemandContribution", "capitalFormationFlow",
 ];
 
 function history(count: number): TurnMetricsSnapshot[] {
@@ -87,6 +93,12 @@ test("CSV values match the source snapshots exactly", () => {
     assert.equal(Number(cells[19]), snapshot.politics.approval);
     assert.equal(Number(cells[24]), snapshot.activity.activeOperations);
     assert.equal(Number(cells[25]), snapshot.activity.activeLegislativeProceedings);
+    assert.equal(Number(cells[26]), snapshot.economyDynamics.productiveCapacityIndex);
+    assert.equal(Number(cells[27]), snapshot.economyDynamics.availableCapacityHeadroom);
+    assert.equal(Number(cells[35]), snapshot.externalEconomy.exchangeRateBrlPerUsd);
+    assert.equal(Number(cells[42]), snapshot.externalEconomy.importedInflationPressure);
+    assert.equal(Number(cells[43]), snapshot.privateEconomy.consumptionIndex);
+    assert.equal(Number(cells[47]), snapshot.privateEconomy.capitalFormationFlow);
   });
 });
 

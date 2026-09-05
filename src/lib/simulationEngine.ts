@@ -1,7 +1,12 @@
 import type { CriminalOrganisation, EducationState, GameState } from "@/lib/gameState";
 import { clamp0to100, pushCapped } from "@/lib/gameState";
 import { advanceEconomy } from "@/lib/economy/advanceEconomy";
-import type { DemandContributions } from "@/lib/economy/types";
+import { advanceNominalGDP } from "@/lib/fiscal";
+import type {
+  DemandContributions,
+  InflationContributions,
+  SupplyContributions,
+} from "@/lib/economy/types";
 
 /**
  * Rounds every numeric GameState field to a sensible display precision.
@@ -50,6 +55,42 @@ export function roundGameStateNumbers(state: GameState): GameState {
       outputGap: Math.round(state.economyDynamics.outputGap * 10000) / 10000,
       inflationPressure: Math.round(state.economyDynamics.inflationPressure * 10000) / 10000,
       labourSlack: Math.round(state.economyDynamics.labourSlack * 10000) / 10000,
+      productiveCapacityIndex: Math.round(state.economyDynamics.productiveCapacityIndex * 10000) / 10000,
+      availableCapacityHeadroom: Math.round(state.economyDynamics.availableCapacityHeadroom * 1000000) / 1000000,
+      capacityUtilisationFlow: Math.round(state.economyDynamics.capacityUtilisationFlow * 1000000) / 1000000,
+      supplyHeadroomApplied: Math.round(state.economyDynamics.supplyHeadroomApplied * 1000000) / 1000000,
+      transmittedMonetaryPressure: Math.round(state.economyDynamics.transmittedMonetaryPressure * 1000000) / 1000000,
+    },
+    privateEconomy: {
+      ...state.privateEconomy,
+      consumptionIndex: Math.round(state.privateEconomy.consumptionIndex * 10000) / 10000,
+      investmentIndex: Math.round(state.privateEconomy.investmentIndex * 10000) / 10000,
+      consumptionDemandContribution: Math.round(state.privateEconomy.consumptionDemandContribution * 1000000) / 1000000,
+      investmentDemandContribution: Math.round(state.privateEconomy.investmentDemandContribution * 1000000) / 1000000,
+      capitalFormationFlow: Math.round(state.privateEconomy.capitalFormationFlow * 1000000) / 1000000,
+    },
+    fiscal: {
+      ...state.fiscal,
+      nominalGDP: Math.round(state.fiscal.nominalGDP * 10000) / 10000,
+    },
+    monetaryPolicy: {
+      ...state.monetaryPolicy,
+      currentSelic: Math.round(state.monetaryPolicy.currentSelic * 100) / 100,
+      previousSelic: Math.round(state.monetaryPolicy.previousSelic * 100) / 100,
+      monetaryStance: Math.round(state.monetaryPolicy.monetaryStance * 100) / 100,
+    },
+    externalEconomy: {
+      ...state.externalEconomy,
+      exchangeRateBrlPerUsd: Math.round(state.externalEconomy.exchangeRateBrlPerUsd * 10000) / 10000,
+      equilibriumExchangeRate: Math.round(state.externalEconomy.equilibriumExchangeRate * 10000) / 10000,
+      exchangeRatePressure: Math.round(state.externalEconomy.exchangeRatePressure * 1000000) / 1000000,
+      foreignDemandIndex: Math.round(state.externalEconomy.foreignDemandIndex * 1000) / 1000,
+      commodityConditionsIndex: Math.round(state.externalEconomy.commodityConditionsIndex * 1000) / 1000,
+      globalRiskIndex: Math.round(state.externalEconomy.globalRiskIndex * 1000) / 1000,
+      exportIndex: Math.round(state.externalEconomy.exportIndex * 1000) / 1000,
+      importIndex: Math.round(state.externalEconomy.importIndex * 1000) / 1000,
+      externalDemandContribution: Math.round(state.externalEconomy.externalDemandContribution * 1000000) / 1000000,
+      importedInflationPressure: Math.round(state.externalEconomy.importedInflationPressure * 1000000) / 1000000,
     },
   };
 }
@@ -345,6 +386,10 @@ export interface TurnTickResult {
   /** Causal attribution for this turn's demand pressure (src/lib/economy/) — not
    *  persisted, kept for a future Explain surface. See advanceEconomy(). */
   demandContributions: DemandContributions;
+  /** Supply-side attribution from completed productive infrastructure. */
+  supplyContributions: SupplyContributions;
+  /** Price-pressure attribution kept for later explainability surfaces. */
+  inflationContributions: InflationContributions;
 }
 
 /**
@@ -438,9 +483,20 @@ export function runTurnTick(state: GameState, completedTurn: number = state.turn
   // rather than fighting or silently overriding them.
   const economyResult = advanceEconomy(newState, undefined, completedTurn);
   newState.economyDynamics = economyResult.dynamics;
+  newState.externalEconomy = economyResult.externalEconomy;
+  newState.privateEconomy = economyResult.privateEconomy;
+  // Public R$bn-per-turn report derived from the canonical export/import indexes.
+  newState.tradeBalance = economyResult.tradeBalance;
   newState.gdpGrowth = economyResult.gdpGrowth;
   newState.inflation = economyResult.inflation;
   newState.unemployment = economyResult.unemployment;
+
+  // Nominal GDP evolves from this turn's just-computed real growth and inflation —
+  // fiscal.nominalGDP stays the sole canonical GDP level; debtToGDP is re-derived from
+  // it immediately after, and sovereignDebt (its externally-readable mirror) is kept in
+  // sync so it never runs a turn stale relative to fiscal.debtToGDP.
+  newState.fiscal = advanceNominalGDP(newState.fiscal, newState.gdpGrowth, newState.inflation);
+  newState.sovereignDebt = newState.fiscal.debtToGDP;
 
   // Criminal organisations regenerate slowly if not actively pressured
   newState.criminalOrganisations = newState.criminalOrganisations.map((org) => {
@@ -471,6 +527,8 @@ export function runTurnTick(state: GameState, completedTurn: number = state.turn
     newState: roundGameStateNumbers(newState),
     triggeredRules: triggered,
     demandContributions: economyResult.demandContributions,
+    supplyContributions: economyResult.supplyContributions,
+    inflationContributions: economyResult.inflationContributions,
   };
 }
 

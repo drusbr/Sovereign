@@ -8,6 +8,10 @@ import {
 } from "@/lib/gameState";
 import type { ProposedAction } from "@/lib/actions/types";
 import { fiscalAmountBillions, postLifecycleExpenditure } from "@/lib/fiscal";
+import {
+  addProductiveCapacity,
+  calculateInfrastructureCapacityAddition,
+} from "@/lib/economy/productiveCapacity";
 import { createLifecycle, lifecycleCanProcess } from "@/lib/lifecycle";
 import type { ProjectCategory, ProjectDefinition } from "@/lib/projects";
 import { deriveThreatLevelFromCapacity } from "@/lib/simulationEngine";
@@ -20,6 +24,9 @@ export interface LifecycleTurnReport {
   spentThisTurn: number;
   progress: number;
   summary: string;
+  /** Productive-capacity index points added when an infrastructure asset becomes
+   * operational. Separate from spentThisTurn, which is the fiscal demand channel. */
+  productiveCapacityAdded?: number;
   operationResults?: OperationMetrics;
 }
 
@@ -275,7 +282,11 @@ function fundingUnavailable(state: GameState): boolean {
   return state.fiscal.discretionaryBudgetAvailable <= 0 && state.fiscal.debtToGDP >= 130;
 }
 
-function applyProjectCompletionEffect(state: GameState, project: ProjectDefinition): GameState {
+function applyProjectCompletionEffect(
+  state: GameState,
+  project: ProjectDefinition,
+  productiveCapacityAdded = 0
+): GameState {
   if (project.completionEffectApplied) return state;
   const next = { ...state };
 
@@ -308,10 +319,18 @@ function applyProjectCompletionEffect(state: GameState, project: ProjectDefiniti
     next.approval = clamp0to100(next.approval + 3);
     next.civilLiberties = clamp0to100(next.civilLiberties + 1);
   } else if (project.category === "Infrastructure") {
-    next.gdpGrowth = Math.min(8, next.gdpGrowth + 0.15);
-    next.publicInvestment = Math.min(10, next.publicInvestment + 0.15);
-    next.fdiFlow = Math.min(30, next.fdiFlow + 0.5);
-    next.tradeBalance = next.tradeBalance + 0.3;
+    // Construction expenditure has already reached demand through the fiscal ledger.
+    // Completion adds only a supply-side asset; headline growth/inflation are left to
+    // advanceEconomy's gradual transmission mechanism.
+    // publicInvestment is a flow (% of GDP), not an infrastructure-stock measure;
+    // completion therefore must not permanently raise it. Construction cash flow is
+    // already recorded in FiscalState during each active turn.
+    // No flat trade/FDI completion bonus: any future export or investment benefit
+    // must enter through a real external/private-investment transmission channel.
+    return addProductiveCapacity(next, {
+      indexPoints: productiveCapacityAdded,
+      headroomShare: productiveCapacityAdded / 100,
+    });
   } else if (project.category === "Security") {
     next.securityIndex = clamp0to100(next.securityIndex + 5);
     next.approval = clamp0to100(next.approval + 2);
@@ -325,10 +344,16 @@ function applyProjectCompletionEffect(state: GameState, project: ProjectDefiniti
       );
     }
   } else if (project.category === "Economic") {
-    next.gdpGrowth = Math.min(8, next.gdpGrowth + 0.2);
+    // gdpGrowth/unemployment/fdiFlow were retired: they conflicted with Economic V2's
+    // exclusive ownership of gdpGrowth/inflation/unemployment (see
+    // ECONOMY_OWNED_MACRO_KEYS in src/lib/economy/types.ts) and this generic category
+    // has no real per-project data (cost, sector, scale) to map onto a genuine
+    // private-investment or productive-capacity channel the way Infrastructure's
+    // completion cost does. Rather than invent a fake mapping, this is left as a flat
+    // reporting bump to businessRegistrations only; a future generic government-
+    // programme system (explicitly out of scope for this slice) is the right place to
+    // give "Economic" category projects a real causal effect.
     next.businessRegistrations = Math.round(next.businessRegistrations + 500);
-    next.unemployment = Math.max(0, next.unemployment - 0.3);
-    next.fdiFlow = Math.min(30, next.fdiFlow + 0.8);
   } else if (project.category === "Diplomatic") {
     next.globalStanding = clamp0to100(next.globalStanding + 3);
     next.internationalPressure = clamp0to100(next.internationalPressure - 5);
@@ -370,13 +395,35 @@ function processProjects(state: GameState, turn: number): { state: GameState; re
       lifecycle.status = "COMPLETED";
       lifecycle.progress = 100;
       lifecycle.completedTurn = turn;
-      project.completionRecord = { turn, finalCost: lifecycle.spent, durationTurns: lifecycle.elapsedTurns, outcome: project.expectedOutcome };
-      next = applyProjectCompletionEffect(next, project);
+      const capacityAddition = project.category === "Infrastructure"
+        ? calculateInfrastructureCapacityAddition(lifecycle.spent, next.fiscal.nominalGDP)
+        : { indexPoints: 0, headroomShare: 0 };
+      project.completionRecord = {
+        turn,
+        finalCost: lifecycle.spent,
+        durationTurns: lifecycle.elapsedTurns,
+        outcome: project.expectedOutcome,
+        ...(capacityAddition.indexPoints > 0
+          ? { productiveCapacityAdded: capacityAddition.indexPoints }
+          : {}),
+      };
+      next = applyProjectCompletionEffect(next, project, capacityAddition.indexPoints);
       project.completionEffectApplied = true;
       next.activeProjects = Math.max(0, next.activeProjects - 1);
     }
     projects.push(project);
-    reports.push({ entityId: project.id, entityType: "PROJECT", title: project.name, status: lifecycle.status, spentThisTurn: spend, progress: lifecycle.progress, summary: project.statusText });
+    reports.push({
+      entityId: project.id,
+      entityType: "PROJECT",
+      title: project.name,
+      status: lifecycle.status,
+      spentThisTurn: spend,
+      progress: lifecycle.progress,
+      summary: project.statusText,
+      ...(project.completionRecord?.productiveCapacityAdded
+        ? { productiveCapacityAdded: project.completionRecord.productiveCapacityAdded }
+        : {}),
+    });
   }
   return { state: { ...next, projects }, reports };
 }

@@ -14,6 +14,8 @@ import { inferExplicitFiscalAction } from "./actions/interpretation.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { resolveTurn } from "./turn/resolveTurn.ts";
 import type { TurnResult } from "./aiPrompts.ts";
+// @ts-expect-error Native type stripping requires explicit TypeScript extensions.
+import { advanceEconomy } from "./economy/advanceEconomy.ts";
 
 function cleanState() {
   const state = createInitialGameState();
@@ -32,6 +34,27 @@ function projectAction(authority: ProposedAction["authority"] = { type: "EXECUTI
     authority,
     targets: [{ id: "BRA", type: "REGION", name: "Brazil" }],
     parameters: { amountBRL: 12_000_000_000, spendingCategory: "health", durationTurns: 156, scope: "20 hospitals" },
+    estimatedCosts: [], prerequisites: [], status: "VALID", validationIssues: [],
+  };
+}
+
+function infrastructureProjectAction(
+  budgetBillions = 12,
+  durationTurns = 3
+): ProposedAction {
+  return {
+    id: `rail-${budgetBillions}-${durationTurns}`,
+    actorId: "BRA",
+    rawOrder: `Launch a R$${budgetBillions}bn federal railway infrastructure project.`,
+    actionType: "FUND_PROJECT",
+    authority: { type: "EXECUTIVE" },
+    targets: [{ id: "BRA", type: "REGION", name: "Brazil" }],
+    parameters: {
+      amountBRL: budgetBillions * 1_000_000_000,
+      spendingCategory: "infrastructure",
+      durationTurns,
+      scope: "Federal freight railway",
+    },
     estimatedCosts: [], prerequisites: [], status: "VALID", validationIssues: [],
   };
 }
@@ -107,6 +130,97 @@ test("project spends and progresses once per turn without upfront double-countin
   assert.ok(once.projects[0].lifecycle.progress > 0);
   const twiceSameTurn = processLifecycleTurn(once, 1).state;
   assert.deepEqual(twiceSameTurn, once);
+});
+
+test("infrastructure construction reaches demand once through the fiscal ledger", () => {
+  const created = createLifecycleEntities(cleanState(), [infrastructureProjectAction(12, 3)]);
+  const once = processLifecycleTurn(created, 1).state;
+  const ledgerEntry = once.fiscal.ledger.at(-1)!;
+  const economy = advanceEconomy(once, undefined, 1);
+
+  assert.equal(ledgerEntry.originType, "PROJECT");
+  assert.equal(ledgerEntry.category, "infrastructure");
+  assert.ok(ledgerEntry.currentTurnCashImpact < 0);
+  assert.equal(
+    economy.demandContributions.oneOffFiscalImpulse,
+    ledgerEntry.amount / once.fiscal.nominalGDP
+  );
+
+  const sameTurn = processLifecycleTurn(once, 1).state;
+  assert.equal(sameTurn.fiscal.ledger.length, once.fiscal.ledger.length);
+});
+
+test("infrastructure capacity appears only on successful completion and exactly once", () => {
+  const created = createLifecycleEntities(cleanState(), [infrastructureProjectAction(12, 2)]);
+  const underConstruction = processLifecycleTurn(created, 1).state;
+  assert.equal(underConstruction.projects[0].lifecycle.status, "ACTIVE");
+  assert.equal(underConstruction.economyDynamics.productiveCapacityIndex, 100);
+
+  const growthBeforeCompletion = underConstruction.gdpGrowth;
+  const publicInvestmentBeforeCompletion = underConstruction.publicInvestment;
+  const fdiBeforeCompletion = underConstruction.fdiFlow;
+  const tradeBeforeCompletion = underConstruction.tradeBalance;
+  const ledgerEntriesBeforeCompletion = underConstruction.fiscal.ledger.length;
+  const completed = processLifecycleTurn(underConstruction, 2).state;
+  assert.equal(completed.projects[0].lifecycle.status, "COMPLETED");
+  assert.ok(completed.economyDynamics.productiveCapacityIndex > 100);
+  assert.ok((completed.projects[0].completionRecord?.productiveCapacityAdded ?? 0) > 0);
+  assert.equal(
+    completed.gdpGrowth,
+    growthBeforeCompletion,
+    "completion must not directly mutate headline GDP growth"
+  );
+  assert.equal(
+    completed.publicInvestment,
+    publicInvestmentBeforeCompletion,
+    "completion must not turn an investment-flow metric into a permanent stock bonus"
+  );
+  assert.equal(completed.fdiFlow, fdiBeforeCompletion, "infrastructure completion must not add a flat FDI bonus");
+  assert.equal(completed.tradeBalance, tradeBeforeCompletion, "infrastructure completion must not add a flat trade bonus");
+  assert.equal(
+    completed.fiscal.ledger.length,
+    ledgerEntriesBeforeCompletion + 1,
+    "the completion turn should post construction cash flow only, not a second capacity expense"
+  );
+
+  const capacity = completed.economyDynamics.productiveCapacityIndex;
+  const ledgerLength = completed.fiscal.ledger.length;
+  const again = processLifecycleTurn(completed, 3).state;
+  assert.equal(again.economyDynamics.productiveCapacityIndex, capacity);
+  assert.equal(again.fiscal.ledger.length, ledgerLength);
+});
+
+test("larger completed infrastructure creates more capacity than a smaller project", () => {
+  const small = processLifecycleTurn(
+    createLifecycleEntities(cleanState(), [infrastructureProjectAction(0.5, 1)]),
+    1
+  ).state;
+  const large = processLifecycleTurn(
+    createLifecycleEntities(cleanState(), [infrastructureProjectAction(50, 1)]),
+    1
+  ).state;
+  assert.ok(
+    large.economyDynamics.productiveCapacityIndex
+      > small.economyDynamics.productiveCapacityIndex
+  );
+});
+
+test("failed and cancelled infrastructure receive no completed capacity", () => {
+  let failing = createLifecycleEntities(cleanState(), [infrastructureProjectAction(12, 3)]);
+  failing.fiscal.discretionaryBudgetAvailable = 0;
+  failing.fiscal.debtToGDP = 130;
+  for (let turn = 1; turn <= 4; turn++) failing = processLifecycleTurn(failing, turn).state;
+  assert.equal(failing.projects[0].lifecycle.status, "FAILED");
+  assert.equal(failing.economyDynamics.productiveCapacityIndex, 100);
+
+  const running = processLifecycleTurn(
+    createLifecycleEntities(cleanState(), [infrastructureProjectAction(12, 3)]),
+    1
+  ).state;
+  const cancelled = cancelLifecycleEntity(running, running.projects[0].id);
+  const later = processLifecycleTurn(cancelled, 2).state;
+  assert.equal(later.projects[0].lifecycle.status, "CANCELLED");
+  assert.equal(later.economyDynamics.productiveCapacityIndex, 100);
 });
 
 test("insufficient financing stalls and prolonged lack of funding fails a project", () => {

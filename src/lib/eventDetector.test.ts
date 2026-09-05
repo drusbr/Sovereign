@@ -5,6 +5,8 @@ import { createInitialGameState } from "./gameState.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { detectStateChanges } from "./eventDetector.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
+import { runCopomMeetingIfDue } from "./economy/monetaryPolicy.ts";
+// @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { createLifecycle } from "./lifecycle.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { postLifecycleExpenditure } from "./fiscal.ts";
@@ -88,4 +90,18 @@ test("significant economy changes surface while small fluctuations remain quiet"
   const events = detectStateChanges({ previousState: before, currentState: after });
   assert.equal(events.some((event) => event.type === "INFLATION_SHIFT"), true);
   assert.equal(events.some((event) => event.type === "UNEMPLOYMENT_SHIFT"), true);
+});
+
+test("a COPOM meeting creates one deduplicated monetary institution fact", () => {
+  const before = createInitialGameState();
+  before.monetaryPolicy.nextMeetingDate = before.date;
+  const after = runCopomMeetingIfDue(before).state;
+  const events = detectStateChanges({ previousState: before, currentState: after });
+  const monetary = events.filter((event) => event.type === "COPOM_DECISION");
+  assert.equal(monetary.length, 1);
+  assert.equal(monetary[0].source, "MONETARY");
+  assert.equal(monetary[0].surfacedToPresident, true);
+  assert.equal(monetary[0].subjects[0].name, "Banco Central do Brasil / COPOM");
+  const repeat = detectStateChanges({ previousState: { ...after, eventHistory: events }, currentState: structuredClone(after) });
+  assert.equal(repeat.some((event) => event.type === "COPOM_DECISION"), false);
 });

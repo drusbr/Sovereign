@@ -29,6 +29,33 @@ const CSV_COLUMNS = [
   "activeProjects",
   "activeOperations",
   "activeLegislativeProceedings",
+  // Slice 2 columns are appended so existing export column positions remain stable.
+  "productiveCapacityIndex",
+  "availableCapacityHeadroom",
+  "capacityUtilisationFlow",
+  "supplyHeadroomApplied",
+  // Slice 3 monetary columns are append-only for export compatibility.
+  "currentSelic",
+  "monetaryStance",
+  "transmittedMonetaryPressure",
+  "inflationTarget",
+  "copomDecision",
+  // Slice 4 external-economy columns remain append-only.
+  "exchangeRateBrlPerUsd",
+  "exchangeRatePressure",
+  "foreignDemandIndex",
+  "commodityConditionsIndex",
+  "exportIndex",
+  "importIndex",
+  "externalDemandContribution",
+  "importedInflationPressure",
+  // Slice 5 private-economy/nominal-GDP columns are appended so existing export
+  // column positions remain stable.
+  "consumptionIndex",
+  "investmentIndex",
+  "consumptionDemandContribution",
+  "investmentDemandContribution",
+  "capitalFormationFlow",
 ] as const;
 
 function csvCell(value: string | number): string {
@@ -64,6 +91,28 @@ function toRow(snapshot: TurnMetricsSnapshot): (string | number)[] {
     snapshot.activity.activeProjects,
     snapshot.activity.activeOperations,
     snapshot.activity.activeLegislativeProceedings,
+    snapshot.economyDynamics.productiveCapacityIndex,
+    snapshot.economyDynamics.availableCapacityHeadroom,
+    snapshot.economyDynamics.capacityUtilisationFlow,
+    snapshot.economyDynamics.supplyHeadroomApplied,
+    snapshot.monetary.currentSelic,
+    snapshot.monetary.monetaryStance,
+    snapshot.economyDynamics.transmittedMonetaryPressure,
+    snapshot.monetary.inflationTarget,
+    snapshot.monetary.copomDecision,
+    snapshot.externalEconomy.exchangeRateBrlPerUsd,
+    snapshot.externalEconomy.exchangeRatePressure,
+    snapshot.externalEconomy.foreignDemandIndex,
+    snapshot.externalEconomy.commodityConditionsIndex,
+    snapshot.externalEconomy.exportIndex,
+    snapshot.externalEconomy.importIndex,
+    snapshot.externalEconomy.externalDemandContribution,
+    snapshot.externalEconomy.importedInflationPressure,
+    snapshot.privateEconomy.consumptionIndex,
+    snapshot.privateEconomy.investmentIndex,
+    snapshot.privateEconomy.consumptionDemandContribution,
+    snapshot.privateEconomy.investmentDemandContribution,
+    snapshot.privateEconomy.capitalFormationFlow,
   ];
 }
 

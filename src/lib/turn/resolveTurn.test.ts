@@ -306,3 +306,18 @@ test("a READY Policy Development request does not block an empty-order turn from
   // Untouched — advancing time neither resolves nor discards it.
   assert.equal(draft.state.policyDevelopmentRequests[0].status, "READY");
 });
+
+test("a due COPOM meeting runs autonomously inside the turn and reaches metrics/events once", () => {
+  const initial = createInitialGameState();
+  initial.monetaryPolicy.nextMeetingDate = initial.date;
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  assert.equal(draft.state.monetaryPolicy.decisionHistory.length, 1);
+  assert.ok(draft.economicAttribution.demand.monetaryPolicy < 0);
+  const result = finalizeTurn(draft, {
+    plan: { deterministicEvents: [], randomSeeds: [], generateNovel: false, cooldownUpdates: {} },
+  });
+  const decision = result.state.monetaryPolicy.decisionHistory[0];
+  assert.equal(result.state.turnMetricsHistory.at(-1)?.monetary.copomDecision, decision.decision);
+  assert.equal(result.eventFacts.filter((event) => event.type === "COPOM_DECISION").length, 1);
+  assert.equal(result.state.newsArticles.filter((article) => article.eventFactIds?.some((id) => id.includes("fact-"))).some((article) => /COPOM|Selic/.test(article.headline)), true);
+});

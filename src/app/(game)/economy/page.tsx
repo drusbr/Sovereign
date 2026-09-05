@@ -12,6 +12,9 @@ import { PolicyLevers } from "@/components/economy/PolicyLevers";
 import { MetricsExportPanel } from "@/components/economy/MetricsExportPanel";
 import { IntelligenceLog } from "@/components/intelligence/IntelligenceLog";
 import { FiscalOverview } from "@/components/economy/FiscalOverview";
+import { CopomPanel } from "@/components/economy/CopomPanel";
+import { ExternalOverview } from "@/components/economy/ExternalOverview";
+import { PrivateEconomyOverview } from "@/components/economy/PrivateEconomyOverview";
 import { PageHeader } from "@/components/PageHeader";
 import { SecondaryNav } from "@/components/SecondaryNav";
 
@@ -35,9 +38,24 @@ export default function EconomyPage() {
             Last Updated: Turn {gameState.turn} — {gameState.date}
           </span>
         </div>} />
-      <SecondaryNav active="Overview" items={[{ label: "Overview", href: "#overview" }, { label: "Fiscal position", href: "#fiscal" }, { label: "Growth & labour", href: "#growth" }]} />
+      <SecondaryNav active="Overview" items={[{ label: "Overview", href: "#overview" }, { label: "External", href: "#external" }, { label: "Monetary policy", href: "#monetary" }, { label: "Fiscal position", href: "#fiscal" }, { label: "Growth & labour", href: "#growth" }]} />
 
       <div id="overview"><KeyIndicators gameState={gameState} /></div>
+
+      <div id="external">
+        <SectionHeader title="External Economy" />
+        <ExternalOverview gameState={gameState} />
+      </div>
+
+      <div id="monetary">
+        <SectionHeader title="Monetary Policy / COPOM" />
+        <CopomPanel gameState={gameState} />
+      </div>
+
+      <div id="private-economy">
+        <SectionHeader title="Household & Private Investment" />
+        <PrivateEconomyOverview gameState={gameState} />
+      </div>
 
       <div id="fiscal">
         <SectionHeader title="Federal Fiscal Position" />

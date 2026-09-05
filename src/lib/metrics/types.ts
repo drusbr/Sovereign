@@ -31,6 +31,37 @@ export interface TurnMetricsSnapshot {
     outputGap: number;
     inflationPressure: number;
     labourSlack: number;
+    productiveCapacityIndex: number;
+    availableCapacityHeadroom: number;
+    capacityUtilisationFlow: number;
+    supplyHeadroomApplied: number;
+    transmittedMonetaryPressure: number;
+  };
+
+  monetary: {
+    currentSelic: number;
+    monetaryStance: number;
+    inflationTarget: number;
+    copomDecision: string;
+  };
+
+  externalEconomy: {
+    exchangeRateBrlPerUsd: number;
+    exchangeRatePressure: number;
+    foreignDemandIndex: number;
+    commodityConditionsIndex: number;
+    exportIndex: number;
+    importIndex: number;
+    externalDemandContribution: number;
+    importedInflationPressure: number;
+  };
+
+  privateEconomy: {
+    consumptionIndex: number;
+    investmentIndex: number;
+    consumptionDemandContribution: number;
+    investmentDemandContribution: number;
+    capitalFormationFlow: number;
   };
 
   politics: {

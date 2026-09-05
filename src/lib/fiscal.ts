@@ -50,7 +50,11 @@ export interface FiscalLedgerEntry {
 export interface FiscalState {
   unit: "BRL_BILLIONS";
   nominalGDP: number;
+  /** Hybrid current-year fiscal total: recurring annual revenue run-rate plus
+   * currentYearOneOffRevenue accumulated so far. Retained name for save/UI stability. */
   annualRevenue: number;
+  /** Hybrid current-year fiscal total: recurring primary run-rate + annual interest
+   * + year-to-date one-offs. It is not the recurring expenditure run-rate alone. */
   annualExpenditure: number;
   primaryRevenue: number;
   primaryExpenditure: number;
@@ -60,8 +64,12 @@ export interface FiscalState {
   publicDebt: number;
   debtToGDP: number;
   discretionaryBudgetAvailable: number;
+  /** Cumulative cash items in the current simulated fiscal year. Fiscal-year rollover
+   * is not modelled yet, so long campaigns retain these reporting totals. */
   currentYearOneOffExpenditure: number;
   currentYearOneOffRevenue: number;
+  /** Current annual/current-year deficit measure for reporting. Debt accrual does not
+   * read this field; recurring flows accrue in closeFiscalWeek and one-offs at posting. */
   financingRequirement: number;
   spendingByCategory: Record<SpendingCategory, number>;
   revenueByCategory: Record<TaxCategory, number>;
@@ -319,6 +327,23 @@ export function closeFiscalWeek(state: GameState): GameState {
   fiscal.publicDebt = Math.max(0, fiscal.publicDebt + weeklyBorrowing - weeklySurplus);
   const closed = recalculate(fiscal);
   return { ...state, fiscal: closed, sovereignDebt: closed.debtToGDP };
+}
+
+/**
+ * Weekly nominal-GDP evolution: nominal growth approx. real growth + inflation,
+ * compounded multiplicatively so it stays coherent at any magnitude, and converted
+ * from the annualised gdpGrowth/inflation headline rates to the single week a turn
+ * represents (annual rate r -> weekly factor (1+r)^(1/52)). fiscal.nominalGDP remains
+ * the sole canonical GDP level — this never creates a second GDP figure, and debt/GDP
+ * continues to read it directly via recalculate(). Deterministic: a pure function of
+ * the two already-computed headline rates, no randomness.
+ */
+export function advanceNominalGDP(fiscal: FiscalState, gdpGrowth: number, inflation: number): FiscalState {
+  const weeklyReal = Math.pow(1 + gdpGrowth / 100, 1 / 52) - 1;
+  const weeklyInflation = Math.pow(1 + inflation / 100, 1 / 52) - 1;
+  const weeklyNominalGrowth = (1 + weeklyReal) * (1 + weeklyInflation) - 1;
+  const nominalGDP = Math.max(0, fiscal.nominalGDP * (1 + weeklyNominalGrowth));
+  return recalculate({ ...fiscal, nominalGDP });
 }
 
 /** Posts lifecycle expenditure when it is incurred; an authorised budget alone is not spending. */

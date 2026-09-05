@@ -19,6 +19,13 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
     inflation: BASELINE.inflation,
     unemployment: BASELINE.unemployment,
     economyDynamics: createInitialEconomyDynamics(state.turn),
+    monetaryPolicy: {
+      ...state.monetaryPolicy,
+      currentSelic: DEFAULT_ECONOMY_CALIBRATION.monetary.neutralNominalRate,
+      previousSelic: DEFAULT_ECONOMY_CALIBRATION.monetary.neutralNominalRate,
+      monetaryStance: 0,
+      stanceClassification: "NEUTRAL",
+    },
     ...overrides,
   };
 }
@@ -44,6 +51,7 @@ function stepTurns(
       inflation: result.inflation,
       unemployment: result.unemployment,
       economyDynamics: result.dynamics,
+      privateEconomy: result.privateEconomy,
     };
     history.push(state);
   }

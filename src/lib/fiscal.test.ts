@@ -3,7 +3,7 @@ import test from "node:test";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { createInitialGameState, hydrateGameState } from "./gameState.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
-import { applyFiscalAction, closeFiscalWeek } from "./fiscal.ts";
+import { advanceNominalGDP, applyFiscalAction, closeFiscalWeek, postLifecycleExpenditure } from "./fiscal.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { ensureLegislativeProceedings, resolveCongressVote } from "./congress.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
@@ -72,6 +72,48 @@ test("annual recurring spending changes run-rate and accrues only one week at cl
   assert.equal(closed.fiscal.publicDebt, applied.fiscal.publicDebt + expectedWeeklyDeficit);
 });
 
+test("interest expense enters debt exactly once through the weekly nominal balance", () => {
+  const state = createInitialGameState();
+  const closed = closeFiscalWeek(state);
+  const expected = (state.fiscal.primaryExpenditure + state.fiscal.interestExpense - state.fiscal.primaryRevenue) / 52;
+  assert.ok(Math.abs((closed.fiscal.publicDebt - state.fiscal.publicDebt) - expected) < 1e-9);
+  assert.equal(expected, 820 / 52);
+});
+
+test("a R$10bn lifecycle disbursement raises debt once without becoming recurring spending", () => {
+  const control = createInitialGameState();
+  let treatment = postLifecycleExpenditure(structuredClone(control), {
+    actionId: "project-cash-1", projectId: "project-1", amount: 10,
+    category: "infrastructure", description: "Current project disbursement", kind: "FUND_PROJECT",
+  });
+  assert.equal(treatment.fiscal.publicDebt - control.fiscal.publicDebt, 10);
+  assert.equal(treatment.fiscal.primaryExpenditure, control.fiscal.primaryExpenditure);
+  for (let i = 0; i < 12; i++) {
+    treatment = closeFiscalWeek(treatment);
+  }
+  let controlAfter = control;
+  for (let i = 0; i < 12; i++) controlAfter = closeFiscalWeek(controlAfter);
+  assert.ok(Math.abs((treatment.fiscal.publicDebt - controlAfter.fiscal.publicDebt) - 10) < 1e-9);
+  assert.equal(treatment.fiscal.primaryExpenditure, controlAfter.fiscal.primaryExpenditure);
+});
+
+test("52-week fiscal-only trajectories follow baseline, balanced-primary and surplus identities", () => {
+  const run = (primaryRevenue: number) => {
+    let state = createInitialGameState();
+    state.fiscal = { ...state.fiscal, primaryRevenue };
+    const initialDebt = state.fiscal.publicDebt;
+    for (let i = 0; i < 52; i++) state = closeFiscalWeek(state);
+    return state.fiscal.publicDebt - initialDebt;
+  };
+  const baseline = run(2480);
+  const balancedPrimary = run(2500);
+  const primarySurplus = run(3500);
+  assert.ok(Math.abs(baseline - 820) < 1e-8);
+  assert.ok(Math.abs(balancedPrimary - 800) < 1e-8);
+  assert.ok(Math.abs(primarySurplus + 200) < 1e-8);
+  assert.ok(primarySurplus < balancedPrimary && balancedPrimary < baseline);
+});
+
 test("revenue increase improves balance", () => {
   const state = createInitialGameState();
   const action = fiscalAction({ actionType: "INCREASE_TAX", authority: { type: "LEGISLATIVE" }, parameters: { annualAmountBRL: 30_000_000_000, taxCategory: "personalIncomeTax" } });
@@ -134,6 +176,45 @@ test("fiscal operations are pure and deterministic", () => {
   const second = applyFiscalAction(state, fiscalAction());
   assert.deepEqual(state, snapshot);
   assert.deepEqual(first, second);
+});
+
+test("positive real growth and inflation raise nominal GDP, with correct annual-to-weekly conversion", () => {
+  const state = createInitialGameState();
+  const advanced = advanceNominalGDP(state.fiscal, 4, 5);
+  const weeklyReal = Math.pow(1.04, 1 / 52) - 1;
+  const weeklyInflation = Math.pow(1.05, 1 / 52) - 1;
+  const expectedGrowth = (1 + weeklyReal) * (1 + weeklyInflation) - 1;
+  const expected = state.fiscal.nominalGDP * (1 + expectedGrowth);
+  assert.ok(Math.abs(advanced.nominalGDP - expected) < 1e-6);
+  assert.ok(advanced.nominalGDP > state.fiscal.nominalGDP);
+  // A single week's compounding at plausible annual rates should be a small fraction
+  // of a percent, not anywhere close to the annualised rate itself.
+  const weeklyShare = advanced.nominalGDP / state.fiscal.nominalGDP - 1;
+  assert.ok(weeklyShare > 0 && weeklyShare < 0.01);
+});
+
+test("negative real growth with sufficient inflation can still produce positive nominal GDP growth", () => {
+  const state = createInitialGameState();
+  const advanced = advanceNominalGDP(state.fiscal, -2, 10);
+  assert.ok(advanced.nominalGDP > state.fiscal.nominalGDP);
+});
+
+test("nominal GDP evolution recomputes debtToGDP without altering nominal public debt", () => {
+  const state = createInitialGameState();
+  const advanced = advanceNominalGDP(state.fiscal, 3, 4);
+  assert.equal(advanced.publicDebt, state.fiscal.publicDebt);
+  assert.notEqual(advanced.debtToGDP, state.fiscal.debtToGDP);
+  assert.ok(Math.abs(advanced.debtToGDP - (advanced.publicDebt / advanced.nominalGDP * 100)) < 1e-9);
+});
+
+test("identical nominal debt with different nominal-GDP paths produces different debt/GDP", () => {
+  const state = createInitialGameState();
+  const highGrowthGDP = advanceNominalGDP(state.fiscal, 6, 6).nominalGDP;
+  const lowGrowthGDP = advanceNominalGDP(state.fiscal, 0, 1).nominalGDP;
+  assert.ok(highGrowthGDP > lowGrowthGDP);
+  const debtToGDPHigh = state.fiscal.publicDebt / highGrowthGDP * 100;
+  const debtToGDPLow = state.fiscal.publicDebt / lowGrowthGDP * 100;
+  assert.ok(debtToGDPHigh < debtToGDPLow, "the same nominal debt against a larger GDP path should read as a lower ratio");
 });
 
 test("old saves hydrate a coherent fiscal ledger", () => {

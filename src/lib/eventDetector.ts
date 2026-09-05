@@ -7,7 +7,7 @@ function hash(text: string): string { let h = 2166136261; for (let i = 0; i < te
 function crossed(a: number, b: number, threshold: number) { return (a < threshold && b >= threshold) || (a >= threshold && b < threshold); }
 function importance(score: number): EventImportance { return score >= 85 ? "CRITICAL" : score >= 60 ? "HIGH" : score >= 30 ? "MEDIUM" : "LOW"; }
 export function scoreEventImportance(event: Omit<EventFact, "importance" | "surfacedToPresident" | "debug" | "id">): number {
-  let score = event.source === "CONGRESS" ? 45 : event.source === "OPERATION" || event.source === "PROJECT" ? 35 : 25;
+  let score = event.source === "CONGRESS" ? 45 : event.source === "MONETARY" ? 40 : event.source === "OPERATION" || event.source === "PROJECT" ? 35 : 25;
   const m = event.metrics ?? {};
   score += Math.min(35, Number(m.budget ?? m.expenditure ?? 0) * 2);
   score += Math.min(30, Number(m.civilianCasualties ?? 0) * 10);
@@ -17,7 +17,7 @@ export function scoreEventImportance(event: Omit<EventFact, "importance" | "surf
 }
 export function shouldSurfaceToPresident(event: EventFact): boolean {
   return event.importance === "HIGH" || event.importance === "CRITICAL"
-    || ["CONGRESS", "PROJECT", "OPERATION", "FISCAL"].includes(event.source) && event.importance === "MEDIUM";
+    || ["CONGRESS", "PROJECT", "OPERATION", "FISCAL", "MONETARY"].includes(event.source) && event.importance === "MEDIUM";
 }
 function fact(base: Omit<EventFact, "id" | "importance" | "surfacedToPresident" | "debug">): EventFact {
   const score = scoreEventImportance(base);
@@ -90,6 +90,43 @@ function thresholdFacts(prev: GameState, curr: GameState): EventFact[] {
   numeric("INFLATION_SHIFT", "economy", "ECONOMY", "inflation", prev.inflation, curr.inflation, T.inflationChange);
   numeric("UNEMPLOYMENT_SHIFT", "economy", "ECONOMY", "unemployment", prev.unemployment, curr.unemployment, T.unemploymentChange);
   numeric("SECURITY_INDEX_SHIFT", "security", "SECURITY", "securityIndex", prev.securityIndex, curr.securityIndex, T.securityChange);
+  const previousFx = prev.externalEconomy.exchangeRateBrlPerUsd;
+  const currentFx = curr.externalEconomy.exchangeRateBrlPerUsd;
+  const fxMoveShare = previousFx > 0 ? (currentFx - previousFx) / previousFx : 0;
+  if (Math.abs(fxMoveShare) >= T.exchangeRateMoveShare) {
+    out.push(fact({
+      turn: curr.turn,
+      occurredTurn: curr.turn,
+      date: curr.date,
+      type: "EXCHANGE_RATE_SHIFT",
+      category: "economy",
+      source: "ECONOMY",
+      subjects: [{ id: "BRL", type: "INSTITUTION", name: "Brazilian real" }],
+      previousValues: { exchangeRateBrlPerUsd: previousFx },
+      currentValues: { exchangeRateBrlPerUsd: currentFx },
+      metrics: {
+        change: currentFx - previousFx,
+        changePercent: fxMoveShare * 100,
+        importedInflationPressure: curr.externalEconomy.importedInflationPressure,
+        externalDemandContribution: curr.externalEconomy.externalDemandContribution,
+      },
+      causes: [
+        curr.externalEconomy.globalRiskIndex > 105
+          ? "elevated global risk"
+          : curr.externalEconomy.commodityConditionsIndex < 95
+            ? "weaker commodity conditions"
+            : curr.externalEconomy.commodityConditionsIndex > 105
+              ? "stronger commodity conditions"
+              : "changing external and financial conditions",
+      ],
+      consequences: [
+        fxMoveShare > 0
+          ? "Imported price pressure is rising while export competitiveness improves."
+          : "Imported price pressure is easing while export competitiveness softens.",
+      ],
+      dedupeKey: `economy:fx:${curr.turn}`,
+    }));
+  }
   for (const band of T.approvalBands) if (crossed(prev.approval, curr.approval, band)) out.push(fact({ turn: curr.turn, occurredTurn: curr.turn, date: curr.date, type: "APPROVAL_THRESHOLD", category: "politics", source: "POLITICS", subjects: [{ id: "PRESIDENCY", type: "INSTITUTION", name: "Presidency" }], previousValues: { approval: prev.approval }, currentValues: { approval: curr.approval }, metrics: { threshold: band }, dedupeKey: `politics:approval:${band}:${curr.approval >= band ? "up" : "down"}` }));
   for (const band of T.coalitionBands) if (crossed(prev.congressionalSupport, curr.congressionalSupport, band)) out.push(fact({ turn: curr.turn, occurredTurn: curr.turn, date: curr.date, type: "COALITION_THRESHOLD", category: "politics", source: "POLITICS", subjects: [{ id: "CONGRESS", type: "INSTITUTION", name: "National Congress" }], previousValues: { support: prev.congressionalSupport }, currentValues: { support: curr.congressionalSupport }, metrics: { threshold: band }, dedupeKey: `politics:coalition:${band}:${curr.congressionalSupport >= band ? "up" : "down"}` }));
   if (prev.gdpGrowth >= 0 && curr.gdpGrowth < 0 || prev.gdpGrowth < 0 && curr.gdpGrowth >= 0) out.push(fact({ turn: curr.turn, occurredTurn: curr.turn, date: curr.date, type: curr.gdpGrowth < 0 ? "RECESSION_BEGAN" : "RECESSION_ENDED", category: "economy", source: "ECONOMY", subjects: [{ id: "BRA", type: "COUNTRY", name: "Brazil" }], previousValues: { growth: prev.gdpGrowth }, currentValues: { growth: curr.gdpGrowth }, dedupeKey: `economy:recession:${curr.gdpGrowth < 0 ? "began" : "ended"}` }));
@@ -112,8 +149,34 @@ function thresholdFacts(prev: GameState, curr: GameState): EventFact[] {
 
 function detectWorld(prev: GameState, curr: GameState): EventFact[] { return curr.worldEvents.filter((event) => !prev.worldEvents.some((old) => old.id === event.id)).map((event) => fact({ turn: curr.turn, occurredTurn: curr.turn, date: curr.date, type: "WORLD_EVENT", category: event.type === "international" ? "international" : "government", source: "WORLD", subjects: [{ id: event.id, type: event.type === "international" ? "COUNTRY" : "STATE", name: event.location }], metrics: { severity: event.severity, requiresResponse: event.requiresResponse }, consequences: event.brazilImpact ? [event.brazilImpact.description] : undefined, geography: [event.location], dedupeKey: `world:${event.id}` })); }
 
+function detectCopom(prev: GameState, curr: GameState): EventFact[] {
+  return curr.monetaryPolicy.decisionHistory
+    .filter((decision) => !prev.monetaryPolicy.decisionHistory.some((old) => old.id === decision.id))
+    .map((decision) => fact({
+      turn: decision.turn,
+      occurredTurn: decision.turn,
+      date: decision.date,
+      type: "COPOM_DECISION",
+      category: "economy",
+      source: "MONETARY",
+      subjects: [{ id: "BCB-COPOM", type: "INSTITUTION", name: "Banco Central do Brasil / COPOM" }],
+      previousValues: { selic: decision.previousSelic },
+      currentValues: { selic: decision.newSelic },
+      metrics: {
+        change: decision.change,
+        inflation: decision.inflation,
+        inflationTarget: decision.inflationTarget,
+        outputGap: decision.outputGap,
+        decision: decision.decision,
+      },
+      causes: decision.reasons,
+      consequences: ["The new stance will transmit gradually through aggregate demand."],
+      dedupeKey: `monetary:${decision.id}`,
+    }));
+}
+
 export function detectStateChanges({ previousState: prev, currentState: curr }: DetectStateChangesInput): EventFact[] {
-  const candidates = [...detectCongress(prev, curr), ...detectProjects(prev, curr), ...detectOperations(prev, curr), ...thresholdFacts(prev, curr), ...detectWorld(prev, curr)];
+  const candidates = [...detectCongress(prev, curr), ...detectProjects(prev, curr), ...detectOperations(prev, curr), ...detectCopom(prev, curr), ...thresholdFacts(prev, curr), ...detectWorld(prev, curr)];
   const historical = new Set((prev.eventHistory ?? []).map((event) => event.dedupeKey));
   const unique = new Map<string, EventFact>();
   for (const event of candidates) if (!historical.has(event.dedupeKey) && !unique.has(event.dedupeKey)) unique.set(event.dedupeKey, event);

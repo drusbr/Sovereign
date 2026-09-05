@@ -1,5 +1,5 @@
 export type EventImportance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type EventSource = "STATE_CHANGE" | "PROJECT" | "OPERATION" | "CONGRESS" | "FISCAL" | "ECONOMY" | "SECURITY" | "POLITICS" | "WORLD" | "MEDIA" | "RANDOM";
+export type EventSource = "STATE_CHANGE" | "PROJECT" | "OPERATION" | "CONGRESS" | "FISCAL" | "MONETARY" | "ECONOMY" | "SECURITY" | "POLITICS" | "WORLD" | "MEDIA" | "RANDOM";
 export type EventCategory = "government" | "economy" | "security" | "politics" | "social" | "international";
 export type EventType =
   | "LEGISLATION_INTRODUCED" | "LEGISLATION_PASSED" | "LEGISLATION_FAILED" | "LEGISLATION_WITHDRAWN"
@@ -7,6 +7,8 @@ export type EventType =
   | "OPERATION_LAUNCHED" | "OPERATION_DEVELOPMENT" | "OPERATION_BREAKTHROUGH" | "OPERATION_CASUALTIES" | "OPERATION_COMPLETED" | "OPERATION_FAILED" | "OPERATION_CANCELLED"
   | "MAJOR_EXPENDITURE" | "DEBT_THRESHOLD" | "FISCAL_BALANCE_SHIFT" | "DISCRETIONARY_CAPACITY_CRITICAL"
   | "INFLATION_SHIFT" | "RECESSION_BEGAN" | "RECESSION_ENDED" | "UNEMPLOYMENT_SHIFT" | "CREDIT_RATING_CHANGED"
+  | "COPOM_DECISION"
+  | "EXCHANGE_RATE_SHIFT"
   | "APPROVAL_THRESHOLD" | "APPROVAL_SHIFT" | "COALITION_THRESHOLD"
   | "SECURITY_INDEX_SHIFT" | "CRIMINAL_CAPACITY_SHIFT" | "CRIMINAL_THREAT_CHANGED"
   | "WORLD_EVENT" | "INTERVIEW_ACCEPTED" | "INTERVIEW_DECLINED" | "MEDIA_INTERVIEW_COMPLETED" | "MAJOR_PUBLIC_COMMITMENT";
@@ -52,5 +54,7 @@ export const EVENT_THRESHOLDS = {
   fiscalBalanceShift: 100,
   majorExpenditure: 5,
   majorAssetSeizure: 0.1,
+  /** Minimum turn-on-turn BRL/USD movement before routine FX becomes newsworthy. */
+  exchangeRateMoveShare: 0.005,
   projectNewsBudget: 1,
 } as const;

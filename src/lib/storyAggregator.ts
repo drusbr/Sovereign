@@ -1,6 +1,6 @@
 import type { EventFact } from "@/lib/eventFacts";
 
-export type StoryFamily = "CONGRESS" | "FISCAL" | "OPERATION" | "PROJECT" | "ECONOMY" | "WORLD" | "GENERAL";
+export type StoryFamily = "CONGRESS" | "FISCAL" | "MONETARY" | "OPERATION" | "PROJECT" | "ECONOMY" | "WORLD" | "GENERAL";
 
 export interface StoryCandidate {
   id: string;
@@ -15,6 +15,7 @@ export interface StoryCandidate {
 function familyOf(event: EventFact): StoryFamily {
   if (event.source === "CONGRESS") return "CONGRESS";
   if (event.source === "FISCAL") return "FISCAL";
+  if (event.source === "MONETARY") return "MONETARY";
   if (event.source === "OPERATION" || event.source === "SECURITY") return "OPERATION";
   if (event.source === "PROJECT") return "PROJECT";
   if (event.source === "ECONOMY") return "ECONOMY";
@@ -49,6 +50,7 @@ function angleFor(family: StoryFamily, facts: EventFact[]): string {
   }
   if (family === "CONGRESS") return "institutional-outcome";
   if (family === "FISCAL") return "public-finances";
+  if (family === "MONETARY") return "policy-rate-decision";
   return "national-development";
 }
 
@@ -61,7 +63,7 @@ export function isStandaloneNewsworthy(event: EventFact): boolean {
   }
   if (event.type === "OPERATION_LAUNCHED") return Number(event.metrics?.budget ?? 0) >= 5;
   if (event.source === "POLITICS" && Math.abs(Number(event.metrics?.change ?? 0)) >= 5) return true;
-  return ["CONGRESS", "FISCAL", "WORLD"].includes(event.source) && event.importance === "MEDIUM";
+  return ["CONGRESS", "FISCAL", "MONETARY", "WORLD"].includes(event.source) && event.importance === "MEDIUM";
 }
 
 /** Groups only same-turn, same-entity facts. Unrelated events always remain separate. */

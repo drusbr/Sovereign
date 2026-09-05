@@ -28,6 +28,9 @@ export interface ProjectDefinition {
     finalCost: number;
     durationTurns: number;
     outcome: string;
+    /** Supply-side capacity index points created when an infrastructure asset
+     * became operational. Undefined for non-infrastructure and legacy completions. */
+    productiveCapacityAdded?: number;
   };
   /** Set on education projects — applied to GameState.education on completion. */
   educationEffect?: Partial<EducationState>;

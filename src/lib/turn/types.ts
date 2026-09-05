@@ -9,6 +9,11 @@ import type {
 } from "@/lib/aiPrompts";
 import type { FailureThreshold } from "@/lib/simulationEngine";
 import type { TurnEventPlan } from "@/lib/eventGenerator";
+import type {
+  DemandContributions,
+  InflationContributions,
+  SupplyContributions,
+} from "@/lib/economy/types";
 
 export type InstitutionalDisposition = "EXECUTABLE" | "BLOCKED" | "PENDING";
 export type ActionResolutionStatus = "EXECUTED" | "BLOCKED" | "PENDING" | "FAILED";
@@ -43,6 +48,11 @@ export interface TurnResolutionDraft {
   turnRecord: TurnRecord;
   previousTurn: number;
   generatedEffects: AITurnResult["effects"];
+  economicAttribution: {
+    demand: DemandContributions;
+    supply: SupplyContributions;
+    inflation: InflationContributions;
+  };
 }
 
 export interface GeneratedWorldEventsInput {
@@ -56,6 +66,11 @@ export interface TurnResolution {
   actionResolutions: ActionResolution[];
   turnRecord: TurnRecord;
   generatedEffects: AITurnResult["effects"];
+  economicAttribution: {
+    demand: DemandContributions;
+    supply: SupplyContributions;
+    inflation: InflationContributions;
+  };
   newWorldEvents: WorldEvent[];
   failureThresholds: FailureThreshold[];
   triggeredGameEvent: GameEventDefinition | null;

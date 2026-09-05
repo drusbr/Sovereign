@@ -17,6 +17,18 @@ import type { InteractiveEncounter } from "@/lib/encounters";
 import type { PolicyRecommendation } from "@/lib/recommendations";
 import type { PolicyDevelopmentRequest } from "@/lib/policyDevelopment/types";
 import { createInitialEconomyDynamics, type EconomyDynamics } from "@/lib/economy/types";
+import {
+  createInitialMonetaryPolicyState,
+  type MonetaryPolicyState,
+} from "@/lib/economy/monetaryPolicy";
+import {
+  createInitialExternalEconomyState,
+  type ExternalEconomyState,
+} from "@/lib/economy/externalEconomy";
+import {
+  createInitialPrivateEconomyState,
+  type PrivateEconomyState,
+} from "@/lib/economy/privateEconomy";
 import { buildTurnMetricsSnapshot } from "@/lib/metrics/snapshot";
 import type { TurnMetricsSnapshot } from "@/lib/metrics/types";
 
@@ -326,9 +338,12 @@ export interface GameState {
   anipAssetsFrozen: number; // in billions BRL
   intelligenceEvents: IntelligenceEvent[];
   unemployment: number; // percentage, e.g. 11.2
-  fdiFlow: number; // billions BRL, positive = inflow
+  /** Legacy R$bn-per-turn investment indicator. Still used by setup, relationship
+   *  rules and Economic/Education completion effects; not an Economic V2 input. */
+  fdiFlow: number;
   fdiHistory: number[]; // last 7 turns
-  tradeBalance: number; // billions BRL, positive = surplus
+  /** Derived R$bn-per-turn report from externalEconomy export/import indexes. */
+  tradeBalance: number;
   informalEconomy: number; // percentage of workforce informal
   creditRating: "AAA" | "AA" | "A" | "BBB" | "BB" | "B" | "CCC" | "Junk";
   businessRegistrations: number; // new formal businesses this turn
@@ -392,6 +407,15 @@ export interface GameState {
    *  state, not a player-facing dashboard. gdpGrowth/inflation/unemployment remain the
    *  canonical player-visible fields; this is what produces their deltas each turn. */
   economyDynamics: EconomyDynamics;
+  /** Canonical policy-rate state. Banco Central/COPOM is its sole mechanical owner. */
+  monetaryPolicy: MonetaryPolicyState;
+  /** Canonical open-economy state. tradeBalance is its derived reporting mirror;
+   *  fdiFlow remains a legacy indicator and is not a causal Economic V2 input. */
+  externalEconomy: ExternalEconomyState;
+  /** Household consumption and private investment (src/lib/economy/privateEconomy.ts)
+   *  — normalised indexes, not a household/firm-level model. Feeds aggregate demand
+   *  through advanceEconomy exactly like the fiscal/monetary/external channels. */
+  privateEconomy: PrivateEconomyState;
   /** Compact per-turn analytics time series (src/lib/metrics/) — one snapshot per
    *  completed turn, appended in finalizeTurn. Canonical export dataset going forward;
    *  existing per-field histories (gdpHistory, fdiHistory, etc.) remain for current
@@ -872,6 +896,13 @@ export function createInitialGameState(): GameState {
     educationHistory: [49, 49, 49, 49, 49, 49, 49],
     policyDevelopmentRequests: [],
     economyDynamics: createInitialEconomyDynamics(1),
+    // Scenario-state default for the January 2026 Brazil campaign. This belongs in a
+    // future scenario-initialisation layer once country packs are separated from GameState.
+    monetaryPolicy: createInitialMonetaryPolicyState(formatGameDate(START_DATE)),
+    // January 2026 scenario state; this belongs in a future scenario initializer
+    // once scenario concerns are separated from GameState construction.
+    externalEconomy: createInitialExternalEconomyState(),
+    privateEconomy: createInitialPrivateEconomyState(),
     turnMetricsHistory: [],
   };
   // Turn 0 = the starting campaign state, recorded once the full object exists so the
@@ -917,7 +948,36 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     // recorded per-turn history to reconstruct, so it starts an empty series rather
     // than fabricating one. New turns append normally from here on.
     turnMetricsHistory: saved.turnMetricsHistory ?? [],
-    economyDynamics: saved.economyDynamics ?? createInitialEconomyDynamics(saved.turn ?? defaults.turn),
+    // Additive hydration: old saves already have the Slice 1 pressure fields but not
+    // the productive-capacity fields introduced in Slice 2. Merge instead of taking
+    // the saved object wholesale so missing supply-side state receives neutral values.
+    economyDynamics: {
+      ...createInitialEconomyDynamics(saved.turn ?? defaults.turn),
+      ...(saved.economyDynamics ?? {}),
+      previousFiscalStance: {
+        ...createInitialEconomyDynamics(saved.turn ?? defaults.turn).previousFiscalStance,
+        ...(saved.economyDynamics?.previousFiscalStance ?? {}),
+      },
+    },
+    // Additive hydration gives pre-Slice-3 saves one canonical Selic state without
+    // fabricating historical meetings.
+    monetaryPolicy: {
+      ...defaults.monetaryPolicy,
+      ...(saved.monetaryPolicy ?? {}),
+      decisionHistory: saved.monetaryPolicy?.decisionHistory ?? [],
+    },
+    // Additive hydration gives pre-Slice-4 saves neutral external conditions while
+    // retaining any external transmission stocks already present in newer saves.
+    externalEconomy: {
+      ...defaults.externalEconomy,
+      ...(saved.externalEconomy ?? {}),
+    },
+    // Additive hydration gives pre-Slice-5 saves a neutral private economy (100/100,
+    // zero contributions) rather than fabricating a history that never happened.
+    privateEconomy: {
+      ...defaults.privateEconomy,
+      ...(saved.privateEconomy ?? {}),
+    },
     policyRecommendations: saved.policyRecommendations ?? [],
     // Backfill education metrics for saves that predate this system
     education: !saved.education

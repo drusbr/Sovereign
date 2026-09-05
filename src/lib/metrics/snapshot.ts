@@ -40,6 +40,36 @@ export function buildTurnMetricsSnapshot(state: GameState, turn: number, actions
       outputGap: state.economyDynamics.outputGap,
       inflationPressure: state.economyDynamics.inflationPressure,
       labourSlack: state.economyDynamics.labourSlack,
+      productiveCapacityIndex: state.economyDynamics.productiveCapacityIndex,
+      availableCapacityHeadroom: state.economyDynamics.availableCapacityHeadroom,
+      capacityUtilisationFlow: state.economyDynamics.capacityUtilisationFlow,
+      supplyHeadroomApplied: state.economyDynamics.supplyHeadroomApplied,
+      transmittedMonetaryPressure: state.economyDynamics.transmittedMonetaryPressure,
+    },
+    monetary: {
+      currentSelic: state.monetaryPolicy.currentSelic,
+      monetaryStance: state.monetaryPolicy.monetaryStance,
+      inflationTarget: state.monetaryPolicy.inflationTarget,
+      copomDecision:
+        [...state.monetaryPolicy.decisionHistory].reverse().find((decision) => decision.turn === turn)
+          ?.decision ?? "NONE",
+    },
+    externalEconomy: {
+      exchangeRateBrlPerUsd: state.externalEconomy.exchangeRateBrlPerUsd,
+      exchangeRatePressure: state.externalEconomy.exchangeRatePressure,
+      foreignDemandIndex: state.externalEconomy.foreignDemandIndex,
+      commodityConditionsIndex: state.externalEconomy.commodityConditionsIndex,
+      exportIndex: state.externalEconomy.exportIndex,
+      importIndex: state.externalEconomy.importIndex,
+      externalDemandContribution: state.externalEconomy.externalDemandContribution,
+      importedInflationPressure: state.externalEconomy.importedInflationPressure,
+    },
+    privateEconomy: {
+      consumptionIndex: state.privateEconomy.consumptionIndex,
+      investmentIndex: state.privateEconomy.investmentIndex,
+      consumptionDemandContribution: state.privateEconomy.consumptionDemandContribution,
+      investmentDemandContribution: state.privateEconomy.investmentDemandContribution,
+      capitalFormationFlow: state.privateEconomy.capitalFormationFlow,
     },
     politics: {
       approval: state.approval,

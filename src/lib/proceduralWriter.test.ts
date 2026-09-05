@@ -61,3 +61,24 @@ test("pipeline creates readable persisted news without an LLM", () => {
   assert.ok(result.state.newsArticles.at(-1)?.headline);
   assert.ok(result.state.newsArticles.at(-1)?.body);
 });
+
+test("COPOM procedural communication preserves the authoritative rate decision", () => {
+  const event: EventFact = {
+    ...operationFact,
+    id: "copom-1",
+    type: "COPOM_DECISION",
+    category: "economy",
+    source: "MONETARY",
+    subjects: [{ id: "BCB-COPOM", type: "INSTITUTION", name: "Banco Central do Brasil / COPOM" }],
+    previousValues: { selic: 14 },
+    currentValues: { selic: 14.5 },
+    metrics: { change: 0.5, inflation: 5.2, inflationTarget: 3, decision: "HIKE_50" },
+    causes: ["inflation remains above the central target", "underlying price pressure is positive"],
+    dedupeKey: "monetary:copom-1",
+  };
+  const rendered = renderEvent(event, "ECONOMIC_NEWS");
+  assert.match(rendered.headline, /14\.50%/);
+  assert.match(rendered.body, /14\.00% to 14\.50%/);
+  assert.match(rendered.body, /5\.20%/);
+  assert.match(rendered.body, /3\.00% target/);
+});

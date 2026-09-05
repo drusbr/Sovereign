@@ -5,7 +5,7 @@ import type { EventFact } from "@/lib/eventFacts";
 import { buildStoryCandidates } from "@/lib/storyAggregator";
 
 function topic(event: EventFact): NewsArticle["topic"] { return event.category === "security" ? "security" : event.category === "economy" ? "economy" : event.category === "international" ? "diplomacy" : event.category === "social" ? "social" : "politics"; }
-function outlet(event: EventFact): NewsArticle["outlet"] { return event.source === "FISCAL" || event.source === "ECONOMY" ? "InfoMoney" : event.source === "CONGRESS" ? "Poder360" : event.source === "OPERATION" || event.source === "SECURITY" ? "O Globo" : "Folha de S.Paulo"; }
+function outlet(event: EventFact): NewsArticle["outlet"] { return event.source === "FISCAL" || event.source === "MONETARY" || event.source === "ECONOMY" ? "InfoMoney" : event.source === "CONGRESS" ? "Poder360" : event.source === "OPERATION" || event.source === "SECURITY" ? "O Globo" : "Folha de S.Paulo"; }
 function sentiment(event: EventFact): NewsArticle["sentiment"] { if (/FAILED|CASUALTIES|STALLED/.test(event.type)) return event.importance === "CRITICAL" ? "critical" : "negative"; if (/PASSED|COMPLETED|BREAKTHROUGH|RESUMED/.test(event.type)) return "positive"; return "neutral"; }
 function style(event: EventFact): NarrativeStyle { return event.category === "security" ? "SECURITY_INTELLIGENCE" : event.category === "economy" ? "ECONOMIC_NEWS" : "GENERAL_NEWS"; }
 

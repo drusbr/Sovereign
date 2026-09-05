@@ -4,16 +4,16 @@ interface PolicyCard {
   title: string;
   description: string;
   badgeLabel: string;
-  badgeColor: "positive" | "amber";
+  badgeColor: "positive" | "amber" | "neutral";
 }
 
 const POLICY_CARDS: PolicyCard[] = [
   {
     title: "Interest Rate Adjustment",
     description:
-      "Direct the Central Bank to adjust the Selic rate. Raising rates controls inflation but slows growth. Cutting rates stimulates growth but risks inflation.",
-    badgeLabel: "Available",
-    badgeColor: "positive",
+      "COPOM independently sets the Selic rate in response to inflation and economic conditions. Fiscal choices can alter those conditions, but the Presidency cannot direct the decision.",
+    badgeLabel: "Independent Institution",
+    badgeColor: "neutral",
   },
   {
     title: "Trade Agreement Fast-Track",
@@ -34,6 +34,7 @@ const POLICY_CARDS: PolicyCard[] = [
 const BADGE_STYLES: Record<PolicyCard["badgeColor"], string> = {
   positive: "text-positive bg-positive/10 border-positive/30",
   amber: "text-amber-400 bg-amber-400/10 border-amber-400/30",
+  neutral: "text-text-muted bg-white/[0.03] border-border",
 };
 
 export function PolicyLevers() {
