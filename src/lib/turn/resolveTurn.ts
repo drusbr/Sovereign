@@ -44,6 +44,7 @@ import { ensureLegislativeProceedings } from "@/lib/congress";
 import { applyFiscalAction, closeFiscalWeek, isFiscalAction } from "@/lib/fiscal";
 import { createLifecycleEntities, processLifecycleTurn } from "@/lib/operationsProjectsEngine";
 import { applyEventPipeline } from "@/lib/eventPipeline";
+import { appendTurnMetricsSnapshot, buildTurnMetricsSnapshot } from "@/lib/metrics/snapshot";
 import type {
   GeneratedWorldEventsInput,
   ResolveTurnInput,
@@ -230,7 +231,11 @@ export function resolveTurn(input: ResolveTurnInput): TurnResolutionDraft {
   working.turn = previousTurn + 1;
   working.actionPoints = 3;
   working = closeFiscalWeek(working);
-  const tick = runTurnTick(working);
+  // previousTurn (== current.turn) is the turn whose lifecycle spend was just posted
+  // to the ledger, above — working.turn has already advanced to previousTurn + 1 by
+  // this point, so advanceEconomy (inside runTurnTick) needs the pre-increment value
+  // explicitly to find this turn's ledger entries.
+  const tick = runTurnTick(working, previousTurn);
   tick.newState.worldDriftLog = tick.triggeredRules
     .map(describeTriggeredRule)
     .filter((line): line is string => Boolean(line));
@@ -386,8 +391,19 @@ export function finalizeTurn(
   }
   const turnRecord = { ...draft.turnRecord, eventFactIds };
 
+  // Exactly one compact analytics snapshot per completed turn (an empty-orders turn
+  // included), taken from the fully rounded end-of-turn state so exported values match
+  // what the player is shown — never recomputed, only recorded. turnRecord.turn is the
+  // turn that was just completed (state.turn has already advanced past it by now).
+  const roundedState = roundGameStateNumbers(finalState);
+  const snapshot = buildTurnMetricsSnapshot(roundedState, turnRecord.turn, turnRecord.actions?.length ?? 0);
+  const stateWithMetrics: GameState = {
+    ...roundedState,
+    turnMetricsHistory: appendTurnMetricsSnapshot(roundedState.turnMetricsHistory, snapshot),
+  };
+
   return {
-    state: roundGameStateNumbers(finalState),
+    state: stateWithMetrics,
     actionResolutions: draft.actionResolutions,
     turnRecord,
     generatedEffects: draft.generatedEffects,

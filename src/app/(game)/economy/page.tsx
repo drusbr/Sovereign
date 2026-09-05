@@ -9,6 +9,7 @@ import { BusinessFormationChart } from "@/components/economy/BusinessFormationCh
 import { HealthScorecard } from "@/components/economy/HealthScorecard";
 import { FdiTrendChart } from "@/components/economy/FdiTrendChart";
 import { PolicyLevers } from "@/components/economy/PolicyLevers";
+import { MetricsExportPanel } from "@/components/economy/MetricsExportPanel";
 import { IntelligenceLog } from "@/components/intelligence/IntelligenceLog";
 import { FiscalOverview } from "@/components/economy/FiscalOverview";
 import { PageHeader } from "@/components/PageHeader";
@@ -82,6 +83,8 @@ export default function EconomyPage() {
       </div>
 
       <PolicyLevers />
+
+      <MetricsExportPanel />
 
       <IntelligenceLog
         events={economicEvents}

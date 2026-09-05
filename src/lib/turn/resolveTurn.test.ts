@@ -4,6 +4,8 @@ import test from "node:test";
 import { createInitialGameState } from "../gameState.ts";
 // @ts-expect-error Native type stripping requires explicit TypeScript extensions.
 import { finalizeTurn, resolveTurn } from "./resolveTurn.ts";
+// @ts-expect-error Native type stripping requires explicit TypeScript extensions.
+import { deriveOneOffFiscalImpulse } from "../economy/fiscalTransmission.ts";
 import type { ProposedAction } from "../actions/types.ts";
 import type { TurnResult } from "../aiPrompts.ts";
 
@@ -128,8 +130,10 @@ test("an empty-order turn still advances Economic Simulation V2", () => {
   const initial = createInitialGameState();
   const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
   // advanceEconomy() ran and stamped this turn's fiscal-stance snapshot, proving the
-  // causal economy engine executed rather than being skipped for an empty turn.
-  assert.equal(draft.state.economyDynamics.previousFiscalStance.turn, draft.state.turn);
+  // causal economy engine executed rather than being skipped for an empty turn. It's
+  // labelled with the completed turn (1), not the already-advanced state.turn (2).
+  assert.equal(draft.state.economyDynamics.previousFiscalStance.turn, draft.turnRecord.turn);
+  assert.equal(draft.state.economyDynamics.previousFiscalStance.turn, draft.state.turn - 1);
   assert.ok(Number.isFinite(draft.state.gdpGrowth));
   assert.ok(Number.isFinite(draft.state.inflation));
   assert.ok(Number.isFinite(draft.state.unemployment));
@@ -143,6 +147,72 @@ test("an empty-order turn still progresses active project/operation lifecycles",
     return advanced && advanced.lifecycle.spent > seed.lifecycle.spent;
   });
   assert.ok(progressed, "at least one seed project should have spent budget this turn with no player action needed");
+});
+
+// --- Economic V2 fiscal-attribution regression (turn-index fix) -----------
+// A lifecycle expenditure is stamped with the turn it actually occurred in
+// (postLifecycleExpenditure, unchanged), but by the time advanceEconomy runs,
+// state.turn has already advanced past it. These prove the completed-turn value is
+// threaded through correctly so that spend is still found.
+
+test("a lifecycle expenditure stamped turn N is included in the economy calculation even though state.turn has already advanced to N+1", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+
+  // The turn that was just completed (and whose ledger entries are stamped with it).
+  assert.equal(draft.turnRecord.turn, 1);
+  // GameState has already moved on to the next turn by the time this runs.
+  assert.equal(draft.state.turn, 2);
+
+  const completedTurnLedgerEntries = draft.state.fiscal.ledger.filter(
+    (entry) => entry.turn === 1 && entry.timing === "ONE_OFF"
+  );
+  assert.ok(completedTurnLedgerEntries.length > 0, "the seed projects/operations should have spent this turn");
+
+  // Real demand pressure — zero would mean the fiscal-attribution bug regressed.
+  assert.notEqual(draft.state.economyDynamics.demandPressure, 0);
+});
+
+test("deriveOneOffFiscalImpulse is nonzero for a real project-spending no-order turn", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+
+  // Using the completed turn (1) — matches how advanceEconomy is now called.
+  const impulse = deriveOneOffFiscalImpulse(draft.state.fiscal, 1, 1.0);
+  assert.notEqual(impulse, 0);
+
+  // Using the (incorrect, pre-fix) post-increment turn must still yield nothing —
+  // proves this isn't accidentally matching on both turn numbers.
+  const wrongTurnImpulse = deriveOneOffFiscalImpulse(draft.state.fiscal, 2, 1.0);
+  assert.equal(Math.abs(wrongTurnImpulse), 0);
+});
+
+test("no double-counting: a second consecutive turn's impulse reflects only that turn's fresh ledger entries", () => {
+  let state = createInitialGameState();
+  const draftTurn1 = resolveTurn({ state, actions: [], aiResult: noOrdersAiResult });
+  state = finalizeTurn(draftTurn1, {
+    plan: { deterministicEvents: [], randomSeeds: [], generateNovel: false, cooldownUpdates: {} },
+  }).state;
+
+  const draftTurn2 = resolveTurn({ state, actions: [], aiResult: noOrdersAiResult });
+  assert.equal(draftTurn2.turnRecord.turn, 2);
+
+  // The ledger now holds both turns' entries (it accumulates), but the derived impulse
+  // for turn 2 must come only from turn-2-stamped entries, not turn 1's as well.
+  const turn1Entries = draftTurn2.state.fiscal.ledger.filter((e) => e.turn === 1 && e.timing === "ONE_OFF");
+  const turn2Entries = draftTurn2.state.fiscal.ledger.filter((e) => e.turn === 2 && e.timing === "ONE_OFF");
+  assert.ok(turn1Entries.length > 0 && turn2Entries.length > 0, "both turns should have posted lifecycle spend");
+
+  const turn2Impulse = deriveOneOffFiscalImpulse(draftTurn2.state.fiscal, 2, 1.0);
+  const combinedIfDoubleCounted = deriveOneOffFiscalImpulse(
+    { ...draftTurn2.state.fiscal, ledger: [...turn1Entries, ...turn2Entries] },
+    2,
+    1.0
+  );
+  // Since deriveOneOffFiscalImpulse filters by entry.turn, restricting the ledger to
+  // just these two turns' entries and asking for turn 2 must equal asking on the full
+  // ledger for turn 2 — proving turn-1 entries were never included in the turn-2 figure.
+  assert.equal(turn2Impulse, combinedIfDoubleCounted);
 });
 
 test("an empty-order turn creates no fake action or fabricated history entry", () => {
@@ -159,6 +229,59 @@ test("an empty-order turn does not require any mechanical LLM effects", () => {
   // The supplied aiResult carried zero effects; nothing in the pipeline needed more
   // than the deterministic no-op shape to produce a valid, advanced turn.
   assert.deepEqual(draft.generatedEffects, {});
+});
+
+// --- Turn metrics history -------------------------------------------------
+
+test("finalizeTurn appends exactly one turn-metrics snapshot per completed turn, labelled with the completed turn", () => {
+  const initial = createInitialGameState();
+  const startingCount = initial.turnMetricsHistory.length; // 1 (the Turn 0 snapshot)
+  const result = finish([action()]);
+  assert.equal(result.state.turnMetricsHistory.length, startingCount + 1);
+  const latest = result.state.turnMetricsHistory.at(-1)!;
+  // The snapshot is labelled with the turn that was just completed (1), not the
+  // already-advanced state.turn (2) — this is the exact regression this test guards.
+  assert.equal(latest.turn, result.turnRecord.turn);
+  assert.equal(latest.turn, 1);
+  assert.equal(result.state.turn, 2);
+  assert.equal(latest.activity.actionsIssued, 1);
+});
+
+test("a no-order turn also appends exactly one turn-metrics snapshot, correctly numbered", () => {
+  const initial = createInitialGameState();
+  const draft = resolveTurn({ state: initial, actions: [], aiResult: noOrdersAiResult });
+  const result = finalizeTurn(draft, {
+    plan: { deterministicEvents: [], randomSeeds: [], generateNovel: false, cooldownUpdates: {} },
+  });
+  assert.equal(result.state.turnMetricsHistory.length, initial.turnMetricsHistory.length + 1);
+  const latest = result.state.turnMetricsHistory.at(-1)!;
+  assert.equal(latest.turn, result.turnRecord.turn);
+  assert.equal(latest.turn, 1);
+  assert.equal(result.state.turn, 2);
+  assert.equal(latest.activity.actionsIssued, 0);
+});
+
+test("turn-metrics history is numbered 0, 1, 2, 3... with no skipped turn across several completed turns", () => {
+  let state = createInitialGameState();
+  for (let i = 0; i < 3; i++) {
+    const draft = resolveTurn({ state, actions: [action()], aiResult });
+    const result = finalizeTurn(draft, {
+      plan: { deterministicEvents: [], randomSeeds: [], generateNovel: false, cooldownUpdates: {} },
+    });
+    state = result.state;
+  }
+  assert.deepEqual(
+    state.turnMetricsHistory.map((snapshot) => snapshot.turn),
+    [0, 1, 2, 3]
+  );
+});
+
+test("the appended snapshot reflects post-turn Economic Simulation V2 and fiscal state, not pre-turn values", () => {
+  const result = finish([action()]);
+  const latest = result.state.turnMetricsHistory.at(-1)!;
+  assert.equal(latest.economyDynamics.demandPressure, result.state.economyDynamics.demandPressure);
+  assert.equal(latest.fiscal.publicDebt, result.state.fiscal.publicDebt);
+  assert.equal(latest.economy.gdpGrowth, result.state.gdpGrowth);
 });
 
 test("a READY Policy Development request does not block an empty-order turn from advancing", () => {

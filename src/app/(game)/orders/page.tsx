@@ -10,8 +10,7 @@ import {
   createDraftAction,
   type ProposedAction,
 } from "@/lib/actions/types";
-import { applyActionValidation } from "@/lib/actions/validation";
-import { inferExplicitFiscalAction, inferExplicitLegislativeAction } from "@/lib/actions/interpretation";
+import { resolveInterpretedOrder } from "@/lib/actions/pendingOrderInterpretation";
 import { renderEvent } from "@/lib/proceduralWriter";
 import { fmtDelta, fmtDeltaPct } from "@/lib/format";
 import { PageHeader } from "@/components/PageHeader";
@@ -41,6 +40,12 @@ export default function OrdersPage() {
   const [draft, setDraft] = useState("");
   const [policyNotice, setPolicyNotice] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  // interpretAction's setTimeout callback fires well after the render it was
+  // scheduled from — closing over `pendingOrders` directly would always see the
+  // pre-add snapshot (React state updates aren't synchronous), so the just-queued
+  // order could never be found and the card would stay stuck on "Interpreting"
+  // forever. This ref is kept in sync every render and read instead.
+  const pendingOrdersRef = useRef(pendingOrders);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -49,21 +54,17 @@ export default function OrdersPage() {
     };
   }, []);
 
+  useEffect(() => {
+    pendingOrdersRef.current = pendingOrders;
+  }, [pendingOrders]);
+
   function updateInterpretedAction(id: string, action: ProposedAction | null) {
     if (!mountedRef.current) return;
-    const order = pendingOrders.find((item) => item.action.id === id);
+    const order = pendingOrdersRef.current.find((item) => item.action.id === id);
     if (!order) return;
-    if (!action) {
-      const fallback = inferExplicitFiscalAction(order.action) ?? inferExplicitLegislativeAction(order.action);
-      if (fallback) {
-        updatePendingAction(id, applyActionValidation(gameState, fallback), "resolved");
-        return;
-      }
-      const unknown = applyActionValidation(gameState, { ...order.action, status: "PROPOSED" });
-      updatePendingAction(id, unknown, "unknown");
-      return;
-    }
-    updatePendingAction(id, applyActionValidation(gameState, action), "resolved");
+    const resolution = resolveInterpretedOrder(order.action, order.interpretationState, action, gameState);
+    if (!resolution) return;
+    updatePendingAction(id, resolution.action, resolution.interpretationState);
   }
 
   function interpretAction(action: ProposedAction) {

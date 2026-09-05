@@ -351,8 +351,13 @@ export interface TurnTickResult {
  * The world's "physics" for one turn: relationship rules, natural drift
  * toward baselines, and slow criminal-organisation regeneration when not
  * actively suppressed. Pure — returns a new state, never mutates the input.
+ *
+ * `completedTurn` (default `state.turn`) is passed straight through to
+ * `advanceEconomy` for its ledger-scan attribution — see that function's doc comment.
+ * `resolveTurn` calls this after `state.turn` has already advanced, so it must pass
+ * the pre-increment turn explicitly.
  */
-export function runTurnTick(state: GameState): TurnTickResult {
+export function runTurnTick(state: GameState, completedTurn: number = state.turn): TurnTickResult {
   const newState: GameState = {
     ...state,
     criminalOrganisations: state.criminalOrganisations.map((o) => ({ ...o })),
@@ -431,7 +436,7 @@ export function runTurnTick(state: GameState): TurnTickResult {
   // education cascades and drift above so it has the final, authoritative say each
   // turn while still relaxing gradually from whatever those legacy inputs left behind,
   // rather than fighting or silently overriding them.
-  const economyResult = advanceEconomy(newState);
+  const economyResult = advanceEconomy(newState, undefined, completedTurn);
   newState.economyDynamics = economyResult.dynamics;
   newState.gdpGrowth = economyResult.gdpGrowth;
   newState.inflation = economyResult.inflation;

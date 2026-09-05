@@ -32,18 +32,28 @@ function relax(current: number, target: number, rate: number): number {
  * output gap → inflation pressure (its own inertia) → inflation; output gap → labour
  * slack (longest lag) → unemployment. gdpGrowth relaxes fastest, inflation more
  * gradually, unemployment slowest — see EconomyCalibration.rates.
+ *
+ * `completedTurn` identifies the turn whose ledger activity should count as this
+ * turn's one-off impulse. It must be the turn number that was current when
+ * `postLifecycleExpenditure` stamped this turn's ledger entries — by the time
+ * `advanceEconomy` runs inside `resolveTurn`, `state.turn` has already been advanced
+ * to the *next* turn, so callers must pass the pre-increment turn explicitly rather
+ * than relying on the default (which only suits isolated tests where both happen to
+ * match). Recurring stance is unaffected by this — it's derived from the live
+ * `state.fiscal` levels directly, not from any turn-stamped ledger entry.
  */
 export function advanceEconomy(
   state: GameState,
-  calibration: EconomyCalibration = DEFAULT_ECONOMY_CALIBRATION
+  calibration: EconomyCalibration = DEFAULT_ECONOMY_CALIBRATION,
+  completedTurn: number = state.turn
 ): EconomyAdvanceResult {
   const { rates, scales, bounds, baseline, taxDemandPassthrough, governmentDemandPassthrough } = calibration;
   const fiscal = state.fiscal;
   const dynamics = state.economyDynamics;
 
-  const stance = deriveFiscalStance(fiscal, baseline, state.turn, taxDemandPassthrough);
+  const stance = deriveFiscalStance(fiscal, baseline, completedTurn, taxDemandPassthrough);
   const oneOffFiscalImpulse = clampSym(
-    deriveOneOffFiscalImpulse(fiscal, state.turn, governmentDemandPassthrough),
+    deriveOneOffFiscalImpulse(fiscal, completedTurn, governmentDemandPassthrough),
     bounds.demandPressure
   );
   const recurringGovernmentSpending = clampSym(stance.recurringExpenditureShare, bounds.demandPressure);

@@ -17,6 +17,8 @@ import type { InteractiveEncounter } from "@/lib/encounters";
 import type { PolicyRecommendation } from "@/lib/recommendations";
 import type { PolicyDevelopmentRequest } from "@/lib/policyDevelopment/types";
 import { createInitialEconomyDynamics, type EconomyDynamics } from "@/lib/economy/types";
+import { buildTurnMetricsSnapshot } from "@/lib/metrics/snapshot";
+import type { TurnMetricsSnapshot } from "@/lib/metrics/types";
 
 export interface PolicyImplementation { id: string; proceedingId: string; actionId: string; title: string; status: "IMPLEMENTATION_PHASE" | "FUNDING_RELEASED" | "ACTIVE" | "COMPLETED" | "BLOCKED"; startedTurn: number; expectedCompletionTurn: number; responsibleInstitution: string; departmentsAffected: number | null; expectedAnnualFiscalImpact: number | null; linkedProjectIds: string[]; linkedOperationIds: string[]; summary: string; }
 
@@ -390,6 +392,11 @@ export interface GameState {
    *  state, not a player-facing dashboard. gdpGrowth/inflation/unemployment remain the
    *  canonical player-visible fields; this is what produces their deltas each turn. */
   economyDynamics: EconomyDynamics;
+  /** Compact per-turn analytics time series (src/lib/metrics/) — one snapshot per
+   *  completed turn, appended in finalizeTurn. Canonical export dataset going forward;
+   *  existing per-field histories (gdpHistory, fdiHistory, etc.) remain for current
+   *  chart/UI compatibility and are not migrated by this. */
+  turnMetricsHistory: TurnMetricsSnapshot[];
 }
 
 const START_DATE = new Date(Date.UTC(2026, 0, 8)); // January 8th 2026
@@ -404,7 +411,7 @@ export function formatGameDate(date: Date): string {
 }
 
 export function createInitialGameState(): GameState {
-  return {
+  const state: GameState = {
     turn: 1,
     date: formatGameDate(START_DATE),
     countryName: "Brazil",
@@ -865,7 +872,16 @@ export function createInitialGameState(): GameState {
     educationHistory: [49, 49, 49, 49, 49, 49, 49],
     policyDevelopmentRequests: [],
     economyDynamics: createInitialEconomyDynamics(1),
+    turnMetricsHistory: [],
   };
+  // Turn 0 = the starting campaign state, recorded once the full object exists so the
+  // snapshot can read every field exactly as a real turn would. state.turn itself
+  // starts at 1 (the first playable turn, an existing convention this doesn't change)
+  // — 0 is passed explicitly to represent "before any turn has been played" in the
+  // time series, now that buildTurnMetricsSnapshot takes the turn as a parameter
+  // rather than reading state.turn, so no post-hoc override is needed.
+  state.turnMetricsHistory = [buildTurnMetricsSnapshot(state, 0, 0)];
+  return state;
 }
 
 /** Adds fields introduced after an older JSON save was created. */
@@ -897,6 +913,10 @@ export function hydrateGameState(saved: Partial<GameState>): GameState {
     encounters: saved.encounters ?? [],
     policyImplementations: saved.policyImplementations ?? [],
     policyDevelopmentRequests: saved.policyDevelopmentRequests ?? [],
+    // No retroactive backfill — a save from before this system existed has no
+    // recorded per-turn history to reconstruct, so it starts an empty series rather
+    // than fabricating one. New turns append normally from here on.
+    turnMetricsHistory: saved.turnMetricsHistory ?? [],
     economyDynamics: saved.economyDynamics ?? createInitialEconomyDynamics(saved.turn ?? defaults.turn),
     policyRecommendations: saved.policyRecommendations ?? [],
     // Backfill education metrics for saves that predate this system
